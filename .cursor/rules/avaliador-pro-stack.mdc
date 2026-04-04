@@ -21,6 +21,12 @@ SaaS B2B para lojistas: calculadora de viabilidade financeira de veículos (marg
 - **Separar** lógica de negócio (cálculos, integrações externas) da UI
 - Respostas ao utilizador em **português brasileiro (pt-BR)** — vocabulário e convenções do Brasil (ex.: celular, software, usuário)
 
+## Testes (Vitest)
+
+- **Não** colocar `*.test.ts` dentro de `src/` — manter testes na pasta **`tests/`** na raiz do repo.
+- Estrutura sugerida: `tests/unit/` espelhando módulos (`tests/unit/lib/…`, `tests/unit/formulario-viabilidade/…`).
+- Importar código sob teste com o alias **`@/…`** (igual ao app). Configuração: `vitest.config.ts`; comandos: `npm run test` / `npm run test:run`.
+
 ## Supabase
 
 - Não adicionar scripts/migrations automáticas no repositório salvo pedido explícito; preferir **SQL para copiar/colar** no painel Supabase quando o utilizador precisar de DDL/policies.

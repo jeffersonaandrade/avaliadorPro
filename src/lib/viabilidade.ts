@@ -74,6 +74,11 @@ export const AJUSTE_FIPE_PCT_MAX = 100;
 export type EntradasViabilidade = {
   /** Preço pedido pelo vendedor — não entra em custo total; só persistência / análise na UI. */
   precoPedido: number;
+  /**
+   * Estimativa de venda na vitrine. Se &gt; 0, simulação base vira market-minus (compra alvo).
+   * Se 0, mantém cost-plus (venda = custos × (1 + lucro %)).
+   */
+  precoVendaEsperado: number;
   reparos: number;
   transporte: number;
   documentacao: number;
@@ -107,7 +112,8 @@ export type ResultadoViabilidade = {
 const LIMIAR_CUSTO_PROXIMO_FIPE = 0.82;
 const LIMIAR_VENDA_VIAVEL = 0.9;
 
-function arredondarReais2(n: number): number {
+/** Arredondamento monetário a 2 casas (mesma regra da UI). */
+export function arredondarReais2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
@@ -148,14 +154,15 @@ export function calcularFaixaNegociacao(
 }
 
 export function calcularVeredito(
-  fipeNum: number,
+  fipeReferencia: number,
   custoTotal: number,
   precoVendaSugerido: number
 ): VereditoViabilidade {
-  if (!Number.isFinite(fipeNum) || fipeNum <= 0) return "indefinido";
+  if (!Number.isFinite(fipeReferencia) || fipeReferencia <= 0)
+    return "indefinido";
 
-  const rCusto = custoTotal / fipeNum;
-  const rVenda = precoVendaSugerido / fipeNum;
+  const rCusto = custoTotal / fipeReferencia;
+  const rVenda = precoVendaSugerido / fipeReferencia;
 
   if (rCusto >= LIMIAR_CUSTO_PROXIMO_FIPE) return "arriscado";
   if (rVenda > 1) return "arriscado";
@@ -163,16 +170,35 @@ export function calcularVeredito(
   return "atencao";
 }
 
-export function calcularViabilidade(
-  entradas: EntradasViabilidade,
-  fipeTexto: string
-): ResultadoViabilidade {
+/** Resultado da simulação base (sem FIPE). */
+export type ResultadoSimulacaoBase = {
+  custoTotal: number;
+  /**
+   * Valor de venda usado no motor (veredito / margem FIPE): esperado no market-minus,
+   * ou custo×(1+p) no cost-plus.
+   */
+  precoVendaSugerido: number;
+  modo: "cost_plus" | "market_minus";
+  precoCompraAlvo: number | null;
+  lucroEstimado: number | null;
+  margemSobreCustosOperacionaisPct: number | null;
+};
+
+/**
+ * Simulação local — sem FIPE nem API.
+ * Com `precoVendaEsperado` &gt; 0: market-minus (compra alvo dado venda e lucro % sobre investimento total).
+ * Sem venda esperada: cost-plus (venda = custos × (1 + lucro %)).
+ */
+export function calcularSimulacaoBase(
+  entradas: EntradasViabilidade
+): ResultadoSimulacaoBase {
   const {
     reparos,
     transporte,
     documentacao,
     outrosCustos,
     pctLucroDesejado,
+    precoVendaEsperado,
   } = entradas;
 
   const custoTotal =
@@ -182,16 +208,69 @@ export function calcularViabilidade(
     (Number.isFinite(outrosCustos) ? outrosCustos : 0);
 
   const pct = Number.isFinite(pctLucroDesejado) ? pctLucroDesejado : 0;
-  const precoVendaSugerido = custoTotal * (1 + Math.max(0, pct) / 100);
+  const p = Math.max(0, pct);
 
-  const fipeNum = parseValorBRL(fipeTexto);
-  let margemRealSobreFipePct: number | null = null;
-  if (Number.isFinite(fipeNum) && fipeNum > 0) {
-    margemRealSobreFipePct =
-      ((precoVendaSugerido - fipeNum) / fipeNum) * 100;
+  const esperado =
+    Number.isFinite(precoVendaEsperado) && precoVendaEsperado > 0
+      ? precoVendaEsperado
+      : 0;
+
+  if (esperado > 0) {
+    const custosOperacionais = custoTotal;
+    const divisor = 1 + p / 100;
+    /** Meta de compra: venda / (1 + lucro%) − custos operacionais (sem preço de compra no custo total). */
+    const precoCompraAlvoBruto = esperado / divisor - custosOperacionais;
+    const precoCompraAlvo = arredondarReais2(Math.max(0, precoCompraAlvoBruto));
+    const lucroEstimado = arredondarReais2(
+      esperado - (precoCompraAlvo + custosOperacionais)
+    );
+    const margemSobreCustosOperacionaisPct =
+      custoTotal > 0 ? (lucroEstimado / custoTotal) * 100 : null;
+
+    return {
+      custoTotal,
+      precoVendaSugerido: esperado,
+      modo: "market_minus",
+      precoCompraAlvo,
+      lucroEstimado,
+      margemSobreCustosOperacionaisPct,
+    };
   }
 
-  const veredito = calcularVeredito(fipeNum, custoTotal, precoVendaSugerido);
+  const precoVendaSugerido = arredondarReais2(custoTotal * (1 + p / 100));
+  const lucroEstimado = arredondarReais2(precoVendaSugerido - custoTotal);
+  const margemSobreCustosOperacionaisPct =
+    custoTotal > 0 ? (lucroEstimado / custoTotal) * 100 : null;
+
+  return {
+    custoTotal,
+    precoVendaSugerido,
+    modo: "cost_plus",
+    precoCompraAlvo: null,
+    lucroEstimado,
+    margemSobreCustosOperacionaisPct,
+  };
+}
+
+export function calcularViabilidade(
+  entradas: EntradasViabilidade,
+  fipeReferenciaTexto: string
+): ResultadoViabilidade {
+  const sim = calcularSimulacaoBase(entradas);
+  const { custoTotal, precoVendaSugerido } = sim;
+
+  const fipeReferencia = parseValorBRL(fipeReferenciaTexto);
+  let margemRealSobreFipePct: number | null = null;
+  if (Number.isFinite(fipeReferencia) && fipeReferencia > 0) {
+    margemRealSobreFipePct =
+      ((precoVendaSugerido - fipeReferencia) / fipeReferencia) * 100;
+  }
+
+  const veredito = calcularVeredito(
+    fipeReferencia,
+    custoTotal,
+    precoVendaSugerido
+  );
 
   const ajusteBruto = Number.isFinite(entradas.ajusteFipePct)
     ? entradas.ajusteFipePct
@@ -201,8 +280,8 @@ export function calcularViabilidade(
     Math.min(AJUSTE_FIPE_PCT_MAX, ajusteBruto)
   );
   const fipeParaNegociacao =
-    Number.isFinite(fipeNum) && fipeNum > 0
-      ? arredondarReais2(fipeNum * (1 + ajusteFipePct / 100))
+    Number.isFinite(fipeReferencia) && fipeReferencia > 0
+      ? arredondarReais2(fipeReferencia * (1 + ajusteFipePct / 100))
       : NaN;
 
   const { ofertaMaximaSugerida, ofertaInicialAncoragem } =
@@ -233,6 +312,7 @@ export function simulacaoFromJSON(
     return typeof v === "number" && Number.isFinite(v) ? v : undefined;
   };
   return {
+    /** Simulações antigas podem ter gravado `precoCompra`; leitura só para migração. */
     precoPedido: num("precoPedido") ?? num("precoCompra"),
     reparos: num("reparos"),
     transporte: num("transporte"),
@@ -241,5 +321,6 @@ export function simulacaoFromJSON(
     pctLucroDesejado: num("pctLucroDesejado"),
     pctGorduraNegociacao: num("pctGorduraNegociacao"),
     ajusteFipePct: num("ajusteFipePct"),
+    precoVendaEsperado: num("precoVendaEsperado"),
   };
 }

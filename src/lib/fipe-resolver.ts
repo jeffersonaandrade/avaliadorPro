@@ -1,3 +1,5 @@
+import { FETCH_TIMEOUT_MS_EXTERNAL } from "@/lib/fetch-timeout-ms";
+
 const FIPE_BASE = "https://api.fipe.online/fipe/api/v1";
 
 export type TipoFipePath = "carros" | "motos" | "caminhoes";
@@ -130,7 +132,7 @@ function tipoVeiculoParaPath(tipo: string): TipoFipePath {
 
 async function fipeGet<T>(path: string): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15_000);
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS_EXTERNAL);
   try {
     const res = await fetch(`${FIPE_BASE}${path}`, {
       signal: controller.signal,

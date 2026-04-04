@@ -26,6 +26,7 @@ Calculadora B2B de **margem real**: consome dados veiculares, aplica custos (rep
 
 - `data-testid` em campos críticos (placa, submit, resultados)
 - Loading e erros explícitos para o lojista no telemóvel
+- Testes unitários (Vitest) na pasta **`tests/unit/`** na raiz — não junto ao código em `src/`; ver rule `avaliador-pro-stack.mdc`
 
 ## SQL Supabase
 

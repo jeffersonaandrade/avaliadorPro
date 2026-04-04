@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { FETCH_TIMEOUT_MS_EXTERNAL } from "@/lib/fetch-timeout-ms";
+
 const consultarPlacaOkSchema = z.object({
   status: z.literal("ok"),
   mensagem: z.string().optional(),
@@ -63,6 +65,7 @@ const CONSULTAR_PLACA_URL =
 /**
  * Informações básicas (Consultar Placa). Consome crédito da conta.
  * Falhas de rede/API não devem debitar crédito no fluxo de negócio (tratar antes de persistir).
+ * Timeout alinhado a `FETCH_TIMEOUT_MS_EXTERNAL` (limite Netlify Free).
  */
 export async function consultarInformacoesBasicas(
   placa: string
@@ -71,7 +74,7 @@ export async function consultarInformacoesBasicas(
   url.searchParams.set("placa", placa);
 
   const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 25_000);
+  const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS_EXTERNAL);
 
   let res: Response;
   try {

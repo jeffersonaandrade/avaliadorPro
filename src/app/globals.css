@@ -1,3 +1,35 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Brilho dos blips do radar alinhado ao giro de 4s do feixe (conic-gradient) */
+@keyframes radar-blip-hit {
+  0% {
+    opacity: 0.5;
+    box-shadow: 0 0 0 0 transparent;
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  5% {
+    opacity: 1;
+    box-shadow:
+      0 0 20px 4px rgba(34, 211, 238, 0.45),
+      0 0 36px 8px rgba(249, 115, 22, 0.2);
+    filter: drop-shadow(0 0 10px rgba(34, 211, 238, 0.75));
+  }
+  15% {
+    opacity: 0.55;
+    box-shadow: 0 0 0 0 transparent;
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  100% {
+    opacity: 0.55;
+    box-shadow: 0 0 0 0 transparent;
+    filter: drop-shadow(0 0 0 transparent);
+  }
+}
+
+@layer utilities {
+  .animate-radar-blip {
+    animation: radar-blip-hit 4s linear infinite;
+  }
+}

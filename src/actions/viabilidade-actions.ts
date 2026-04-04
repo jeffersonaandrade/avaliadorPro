@@ -4,15 +4,22 @@ import { supabaseAdmin } from "@/lib/supabase";
 import {
   AJUSTE_FIPE_PCT_MAX,
   AJUSTE_FIPE_PCT_MIN,
+  calcularSimulacaoBase,
   calcularViabilidade,
   type EntradasViabilidade,
   type SimulacaoViabilidadePersistida,
+  type VereditoViabilidade,
 } from "@/lib/viabilidade";
+import { MOCK_DEMO_USER_ID, isPublicDemoMocksMode } from "@/lib/demo-mocks";
+import { carregarUsuarioAcesso } from "@/lib/usuario-acesso";
 import { placaSchema } from "@/lib/validations";
 
 export type SalvarSimulacaoInput = EntradasViabilidade & {
   placa: string;
-  fipeTexto: string;
+  fipeReferenciaTexto: string;
+  identificadorCliente: string;
+  /** Quando false, persiste só simulação base (sem oferta/veredito FIPE). Default: true. */
+  incluirContextoFipeMercado?: boolean;
 };
 
 export async function salvarSimulacaoViabilidadeAction(
@@ -23,8 +30,20 @@ export async function salvarSimulacaoViabilidadeAction(
     return { ok: false, erro: "Placa inválida." };
   }
 
+  const idCliente =
+    (input.identificadorCliente ?? "").trim() ||
+    (isPublicDemoMocksMode() ? MOCK_DEMO_USER_ID : "");
+  if (!idCliente) {
+    return { ok: false, erro: "Sessão não identificada." };
+  }
+  const usuario = await carregarUsuarioAcesso(idCliente);
+  if (!usuario?.plano_ativo) {
+    return { ok: false, erro: "Plano inativo — não é possível salvar a simulação." };
+  }
+
   const entradas: EntradasViabilidade = {
     precoPedido: Math.max(0, input.precoPedido),
+    precoVendaEsperado: Math.max(0, input.precoVendaEsperado ?? 0),
     reparos: Math.max(0, input.reparos),
     transporte: Math.max(0, input.transporte),
     documentacao: Math.max(0, input.documentacao),
@@ -43,7 +62,20 @@ export async function salvarSimulacaoViabilidadeAction(
     ),
   };
 
-  const calc = calcularViabilidade(entradas, input.fipeTexto);
+  const usarFipeMercado = input.incluirContextoFipeMercado !== false;
+  const calc = usarFipeMercado
+    ? calcularViabilidade(entradas, input.fipeReferenciaTexto)
+    : (() => {
+        const base = calcularSimulacaoBase(entradas);
+        return {
+          custoTotal: base.custoTotal,
+          precoVendaSugerido: base.precoVendaSugerido,
+          margemRealSobreFipePct: null as number | null,
+          veredito: "indefinido" as VereditoViabilidade,
+          ofertaMaximaSugerida: null as number | null,
+          ofertaInicialAncoragem: null as number | null,
+        };
+      })();
 
   const payload: SimulacaoViabilidadePersistida = {
     ...entradas,
