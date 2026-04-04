@@ -1,0 +1,327 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import {
+  Calendar,
+  Car,
+  DollarSign,
+  FlaskConical,
+  Fuel,
+  Hash,
+  Loader2,
+  Palette,
+  Search,
+  Sparkles,
+} from "lucide-react";
+import {
+  buscarVeiculoAction,
+  type BuscarVeiculoResult,
+} from "@/actions/veiculo-actions";
+import { FormularioViabilidade } from "@/components/FormularioViabilidade";
+
+function consultaEhHoje(iso: string): boolean {
+  const d = new Date(iso);
+  const hoje = new Date();
+  return (
+    d.getFullYear() === hoje.getFullYear() &&
+    d.getMonth() === hoje.getMonth() &&
+    d.getDate() === hoje.getDate()
+  );
+}
+
+function formatarDataConsulta(iso: string): string {
+  return new Date(iso).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+export function BuscaPlaca() {
+  const [placa, setPlaca] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<BuscarVeiculoResult | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setErro(null);
+    setResultado(null);
+
+    startTransition(async () => {
+      try {
+        const res = await buscarVeiculoAction(placa);
+        if (!res.sucesso) {
+          setErro(res.erro);
+          return;
+        }
+        setResultado(res);
+      } catch {
+        setErro("Não foi possível concluir a busca. Tente novamente.");
+      }
+    });
+  }
+
+  return (
+    <div className="w-full space-y-10">
+      <div className="space-y-2 text-center sm:text-left">
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+          Consulta por placa
+        </h2>
+        <p className="text-sm leading-relaxed text-slate-600 sm:text-base">
+          Formato Mercosul ou antigo. Validação e cache no servidor, com
+          transparência na data da última consulta.
+        </p>
+      </div>
+
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-6 rounded-3xl border border-slate-200/90 bg-gradient-to-b from-white to-slate-50/40 p-6 shadow-xl shadow-slate-200/40 sm:p-8"
+        noValidate
+      >
+        <div className="space-y-3">
+          <label
+            htmlFor="placa"
+            className="block text-sm font-semibold text-slate-700"
+          >
+            Placa do veículo
+          </label>
+          <div className="group relative">
+            <div
+              className="pointer-events-none absolute left-5 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-sm ring-1 ring-indigo-100 transition group-focus-within:bg-indigo-100 group-focus-within:ring-indigo-200"
+              aria-hidden
+            >
+              <Search className="size-[1.35rem]" strokeWidth={2} />
+            </div>
+            <input
+              id="placa"
+              name="placa"
+              type="text"
+              inputMode="text"
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              placeholder="ABC1D23"
+              value={placa}
+              onChange={(e) =>
+                setPlaca(
+                  e.target.value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 7)
+                )
+              }
+              disabled={isPending}
+              data-testid="input-placa"
+              className="w-full rounded-2xl border-2 border-slate-200/90 bg-white py-5 pl-[4.25rem] pr-5 font-mono text-xl font-bold uppercase tracking-[0.35em] text-slate-900 shadow-inner shadow-slate-100 placeholder:text-center placeholder:tracking-[0.35em] placeholder:text-slate-300 outline-none transition-all duration-200 placeholder:sm:text-left focus:border-indigo-500 focus:shadow-[0_0_0_4px_rgba(99,102,241,0.12)] focus:ring-0 disabled:cursor-not-allowed disabled:opacity-55 sm:text-2xl sm:tracking-[0.4em]"
+              maxLength={7}
+            />
+          </div>
+          <p className="text-center text-xs text-slate-500 sm:text-left">
+            <span className="font-mono font-medium text-slate-600">ABC1234</span>
+            {" · "}
+            <span className="font-mono font-medium text-slate-600">ABC1D23</span>
+            <span className="hidden sm:inline"> · 7 caracteres</span>
+          </p>
+        </div>
+
+        {erro ? (
+          <p
+            role="alert"
+            className="rounded-2xl border border-red-200/90 bg-red-50/90 px-5 py-4 text-sm font-medium leading-relaxed text-red-900 shadow-sm"
+            data-testid="erro-busca-placa"
+          >
+            {erro}
+          </p>
+        ) : null}
+
+        <button
+          type="submit"
+          disabled={isPending}
+          data-testid="btn-buscar-placa"
+          className="group relative flex w-full items-center justify-center gap-3 overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-700 via-indigo-600 to-indigo-700 px-6 py-4 text-base font-semibold text-white shadow-xl shadow-indigo-500/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-indigo-500/35 active:translate-y-0 disabled:translate-y-0 disabled:cursor-not-allowed disabled:from-slate-400 disabled:via-slate-400 disabled:to-slate-400 disabled:shadow-none"
+        >
+          <span
+            className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/0 via-white/15 to-white/0 opacity-0 transition-opacity duration-500 group-hover:opacity-100 group-disabled:opacity-0"
+            aria-hidden
+          />
+          {isPending ? (
+            <>
+              <Loader2
+                className="relative size-5 shrink-0 animate-spin text-white/95 [animation-duration:850ms]"
+                strokeWidth={2}
+              />
+              <span className="relative">Consultando bases…</span>
+            </>
+          ) : (
+            <>
+              <Sparkles className="relative size-5 shrink-0 opacity-90" />
+              <span className="relative">Consultar placa</span>
+            </>
+          )}
+        </button>
+      </form>
+
+      {resultado?.sucesso ? (
+        <section
+          className="space-y-5"
+          aria-live="polite"
+          data-testid="resultado-busca-placa"
+        >
+          {resultado.sandboxAtivo ? (
+            <div
+              className="flex items-center justify-center gap-2 rounded-2xl border border-amber-200/80 bg-amber-50/90 px-4 py-2.5 text-center shadow-sm"
+              role="status"
+              data-testid="badge-sandbox-ativo"
+            >
+              <FlaskConical
+                className="size-4 shrink-0 text-amber-700"
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-900">
+                MODO SANDBOX ATIVO
+              </span>
+            </div>
+          ) : null}
+
+          <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
+            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
+              Resultado da consulta
+            </h3>
+            <span
+              className="inline-flex w-fit max-w-full items-center gap-2 self-end rounded-full border border-indigo-200/80 bg-indigo-50 px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-indigo-900 shadow-sm sm:self-auto"
+              data-testid="badge-data-consulta"
+            >
+              <span className="size-1.5 shrink-0 rounded-full bg-indigo-500" aria-hidden />
+              <span className="line-clamp-2 text-left normal-case tracking-normal">
+                {resultado.mesReferenciaFipe
+                  ? `Tabela FIPE · ${resultado.mesReferenciaFipe}`
+                  : consultaEhHoje(resultado.consultadoEm)
+                    ? "Consulta atualizada hoje"
+                    : `Consulta em ${formatarDataConsulta(resultado.consultadoEm)}`}
+              </span>
+            </span>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-6 shadow-lg shadow-slate-200/30 transition hover:shadow-xl hover:shadow-slate-200/40">
+              <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 ring-1 ring-slate-200/80">
+                <Car className="size-6" strokeWidth={2} />
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Identificação
+              </p>
+              <p className="mt-2 text-xl font-bold leading-tight text-slate-900 sm:text-2xl">
+                {resultado.marca}
+              </p>
+              <p className="mt-1 text-sm font-medium leading-snug text-slate-600 sm:text-base">
+                {resultado.modelo}
+              </p>
+            </div>
+
+            <div className="flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-6 shadow-lg shadow-slate-200/30 transition hover:shadow-xl hover:shadow-slate-200/40">
+              <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 ring-1 ring-slate-200/80">
+                <Calendar className="size-6" strokeWidth={2} />
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Ano modelo
+              </p>
+              <p className="mt-3 font-mono text-4xl font-bold tabular-nums tracking-tight text-slate-900">
+                {resultado.ano}
+              </p>
+              <p className="mt-auto pt-4 text-xs text-slate-500">
+                Referência para cálculo de viabilidade
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="flex flex-col rounded-2xl border border-slate-200/90 bg-slate-50/80 p-5 shadow-md shadow-slate-200/25">
+              <div className="mb-3 flex size-10 items-center justify-center rounded-xl bg-white text-slate-600 ring-1 ring-slate-200/80">
+                <Hash className="size-5" strokeWidth={2} />
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Chassi
+              </p>
+              <p className="mt-2 break-all font-mono text-xs font-semibold leading-snug text-slate-800">
+                {resultado.chassi}
+              </p>
+            </div>
+            <div className="flex flex-col rounded-2xl border border-slate-200/90 bg-slate-50/80 p-5 shadow-md shadow-slate-200/25">
+              <div className="mb-3 flex size-10 items-center justify-center rounded-xl bg-white text-slate-600 ring-1 ring-slate-200/80">
+                <Palette className="size-5" strokeWidth={2} />
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Cor
+              </p>
+              <p className="mt-2 text-sm font-semibold text-slate-800">
+                {resultado.cor}
+              </p>
+            </div>
+            <div className="flex flex-col rounded-2xl border border-slate-200/90 bg-slate-50/80 p-5 shadow-md shadow-slate-200/25 sm:col-span-1">
+              <div className="mb-3 flex size-10 items-center justify-center rounded-xl bg-white text-slate-600 ring-1 ring-slate-200/80">
+                <Fuel className="size-5" strokeWidth={2} />
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Combustível
+              </p>
+              <p className="mt-2 text-sm font-semibold text-slate-800">
+                {resultado.combustivel}
+              </p>
+            </div>
+          </div>
+
+          {resultado.avisoFipe ? (
+            <div
+              className="rounded-2xl border border-amber-200/90 bg-amber-50/90 px-5 py-4 text-sm font-medium text-amber-950 shadow-sm"
+              role="status"
+              data-testid="aviso-fipe-indisponivel"
+            >
+              {resultado.avisoFipe}
+            </div>
+          ) : null}
+
+          <div className="relative overflow-hidden rounded-3xl border border-indigo-950/20 bg-gradient-to-br from-indigo-950 via-indigo-900 to-slate-950 p-8 shadow-2xl shadow-indigo-950/40 sm:p-10">
+            <div
+              className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-indigo-500/25 blur-3xl"
+              aria-hidden
+            />
+            <div
+              className="pointer-events-none absolute -bottom-20 left-1/4 size-48 rounded-full bg-violet-500/15 blur-3xl"
+              aria-hidden
+            />
+
+            <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start">
+              <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white ring-1 ring-white/20 backdrop-blur-sm">
+                <DollarSign className="size-7" strokeWidth={2} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-indigo-200/90">
+                  Tabela FIPE · referência
+                </p>
+                <p
+                  className={`mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl lg:text-5xl ${
+                    resultado.fipe === "—"
+                      ? "text-indigo-200/70"
+                      : "text-white"
+                  }`}
+                >
+                  {resultado.fipe}
+                </p>
+                <p className="mt-5 max-w-xl text-sm leading-relaxed text-indigo-100/85">
+                  Valor indicativo para análise de margem. Cruze com custos de
+                  pátio, reparo e política comercial antes de fechar negócio.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <FormularioViabilidade
+            key={resultado.placa}
+            placa={resultado.placa}
+            fipeTexto={resultado.fipe}
+            simulacaoJson={resultado.simulacaoViabilidade}
+          />
+        </section>
+      ) : null}
+    </div>
+  );
+}

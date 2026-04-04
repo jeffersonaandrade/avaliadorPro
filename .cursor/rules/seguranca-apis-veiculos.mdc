@@ -1,0 +1,21 @@
+---
+description: Segurança de chaves e regra No Data, No Charge (APIs veiculares)
+alwaysApply: true
+---
+
+# APIs veiculares — segurança e créditos
+
+## Chaves e chamadas externas
+
+- **Nunca** expor no cliente chaves de terceiros (ex.: APIBrasil, Consultar Placa, Infocar, etc.)
+- Chamadas a essas APIs **apenas** no backend: **Server Actions**, **route handlers** ou **procedures tRPC** (`createCaller` no servidor, não secrets no bundle do browser)
+
+## No Data, No Charge
+
+- Se a API externa falhar (ex.: 502, timeout, resposta inválida), tratar com UX clara **sem** descontar crédito/saldo no Supabase
+- Só debitar após **dados válidos** confirmados (contrato + validação); em dúvida, **não** cobrar e registar o motivo em log estruturado
+
+```ts
+// ❌ fetch com API_KEY em 'use client' ou em código importado pelo cliente
+// ✅ env vars só lidas em runtime no servidor; cliente chama tRPC/action
+```

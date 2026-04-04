@@ -1,0 +1,34 @@
+---
+description: Contexto Avaliador PRO, stack e princípios gerais de código
+alwaysApply: true
+---
+
+# Avaliador PRO — contexto e stack
+
+SaaS B2B para lojistas: calculadora de viabilidade financeira de veículos (margem real) usando APIs veiculares (FIPE, dados básicos, leilão, sinistro), custos de reparo, impostos e taxas.
+
+## Stack
+
+- Next.js (App Router), TypeScript **strict**
+- Tailwind CSS (mobile first, responsivo)
+- tRPC (contratos client/server)
+- Supabase (PostgreSQL + auth)
+
+## Princípios
+
+- Código limpo, modular; **SOLID** e **DRY**
+- React: componentes funcionais e Hooks
+- **Separar** lógica de negócio (cálculos, integrações externas) da UI
+- Respostas ao utilizador em **português brasileiro (pt-BR)** — vocabulário e convenções do Brasil (ex.: celular, software, usuário)
+
+## Supabase
+
+- Não adicionar scripts/migrations automáticas no repositório salvo pedido explícito; preferir **SQL para copiar/colar** no painel Supabase quando o utilizador precisar de DDL/policies.
+
+## Skills instaladas com `npx skills`
+
+O CLI grava em `.agents/skills/<nome-exato-da-pasta>`. O Cursor lê `.cursor/skills/<mesmo-nome>/SKILL.md`. No Windows, criar **junction** (ajuste `NOME` para o nome que o `npx skills` mostrar ao final):
+
+`New-Item -ItemType Junction -Path ".cursor\skills\NOME" -Target ".agents\skills\NOME"`
+
+Exemplos neste repo: `frontend-design`, `supabase-postgres-best-practices` (pacote `supabase/agent-skills`). `npx skills update` atualiza `.agents`; a junction mantém o Cursor alinhado.

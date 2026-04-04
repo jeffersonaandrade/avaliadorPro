@@ -1,0 +1,20 @@
+---
+description: TypeScript strict, Zod e tRPC no Avaliador PRO
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# TypeScript, Zod e tRPC
+
+- Evitar `any`; definir **types/interfaces** para JSON de FIPE, leilão, sinistro e restantes integrações
+- **Zod** para input/output das procedures tRPC e para validar respostas externas quando fizer sentido (parse + tratamento de erro)
+- Manter schemas próximos dos routers ou em módulos `schemas/` reutilizáveis
+
+```ts
+// ✅
+const LeilaoSchema = z.object({ /* campos explícitos */ });
+type Leilao = z.infer<typeof LeilaoSchema>;
+
+// ❌
+const data = await res.json() as SomeVagueType;
+```

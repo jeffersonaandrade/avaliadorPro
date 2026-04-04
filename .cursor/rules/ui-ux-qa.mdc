@@ -1,0 +1,26 @@
+---
+description: UI responsiva, feedback de loading, testabilidade e valores monetários
+globs: "**/*.tsx"
+alwaysApply: false
+---
+
+# UI/UX, QA e formulários
+
+## Layout e feedback
+
+- **Mobile first** (uso no pátio no telemóvel)
+- Loading visível: skeleton ou spinner em operações pesadas
+- Estados de erro legíveis; não expor detalhes internos de APIs a terceiros
+
+## Testabilidade (E2E futuro)
+
+- Atributos **`data-testid`** descritivos em inputs e ações críticas (ex.: `data-testid="input-placa"`)
+
+## Moeda e percentagens
+
+- No **frontend**: máscaras agradáveis
+- Nos **cálculos e backend**: números puros (ex.: `number` ou **centavos** como inteiro — escolher uma convenção do projeto e manter consistente)
+
+## Backend — observabilidade
+
+- Logs **estruturados** em chamadas a APIs externas e em falhas relacionadas com pagamento/créditos (correlation id / request id quando existir)
