@@ -33,7 +33,7 @@ export function AlertasDecisao({
               <span className="font-mono font-bold tabular-nums">
                 {formatarMoedaBRL(diferencaParaTeto)}
               </span>{" "}
-              acima do limite de segurança (oferta máxima sugerida).
+              acima do limite de segurança sugerido (“não pague mais que”).
             </p>
           ) : null}
           {prejuizoPessimista ? (

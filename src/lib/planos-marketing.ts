@@ -9,7 +9,8 @@ export const PLANOS_LANDING = [
     creditosRisco: 0,
     /** Texto abaixo da linha de créditos (opcional). */
     creditosDetalhe: null as string | null,
-    /** Preço de risco avulso / extras (alta margem). */
+    /** Crédito de blindagem completa (pacote com Renainf) — avulso. */
+    precoCreditoPremiumAvulso: "R$ 24,90",
     extrasRiscoLabel:
       "Consultas de risco avulsas: R$ 24,90.",
     tagline: "Ideal para quem avalia poucos carros.",
@@ -22,8 +23,9 @@ export const PLANOS_LANDING = [
     periodo: "/mês",
     fipeMes: 150,
     creditosRisco: 3,
-    creditosDetalhe: "Bônus de R$ 59,70.",
-    extrasRiscoLabel: "Consultas de risco extras: R$ 19,90.",
+    creditosDetalhe: "Bônus de R$ 80,70 (3 créditos ao preço avulso).",
+    precoCreditoPremiumAvulso: "R$ 26,90",
+    extrasRiscoLabel: "Consultas de risco extras: R$ 26,90.",
     tagline: "Volume típico de pátio com proteção de margem.",
     destaque: true,
   },
@@ -33,9 +35,10 @@ export const PLANOS_LANDING = [
     preco: "R$ 149,90",
     periodo: "/mês",
     fipeMes: 300,
-    creditosRisco: 10,
+    creditosRisco: 7,
     creditosDetalhe: "Plano se paga sozinho.",
-    extrasRiscoLabel: "Consultas de risco extras: R$ 14,90.",
+    precoCreditoPremiumAvulso: "R$ 21,90",
+    extrasRiscoLabel: "Consultas de risco extras: R$ 21,90.",
     tagline: "Alto giro: mais FIPE e créditos para o time.",
     destaque: false,
   },

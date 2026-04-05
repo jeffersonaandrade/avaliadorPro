@@ -4,7 +4,13 @@ import {
   constatadoTriStateConsultaPlaca,
   type TipoConsultaRiscoPremium,
 } from "@/lib/consultas-risco-premium";
-import { FETCH_TIMEOUT_MS_EXTERNAL } from "@/lib/fetch-timeout-ms";
+import { parsearRenainfDossie } from "@/lib/api-v2/parsers";
+import {
+  FETCH_TIMEOUT_MS_EXTERNAL,
+  FETCH_TIMEOUT_MS_LEILAO_PRIME,
+  FETCH_TIMEOUT_MS_RENAINF,
+} from "@/lib/fetch-timeout-ms";
+import { formatarMoedaBRL } from "@/lib/viabilidade";
 
 const BASE = "https://api.consultarplaca.com.br";
 
@@ -17,6 +23,7 @@ export const PATHS_PREMIUM_V2: Record<TipoConsultaRiscoPremium, string> = {
   sinistro: "/v2/consultarSinistroComPerdaTotal",
   roubo_furto: "/v2/consultarHistoricoRouboFurto",
   gravame: "/v2/consultarGravame",
+  renainf: "/v2/consultarRegistrosInfracoesRenainf",
 };
 
 export function obterTokenBearerConsultarPlacaV2(): string {
@@ -69,6 +76,8 @@ export function estruturaMinimaPorTipo(
     }
     case "gravame":
       return typeof dados.gravame === "object" && dados.gravame !== null;
+    case "renainf":
+      return dados !== null && typeof dados === "object" && !Array.isArray(dados);
     default:
       return false;
   }
@@ -136,6 +145,17 @@ export function normalizarConsultaPremiumV2(
           : `Gravame: sem registro ativo. ${msgBase}`.trim(),
       };
     }
+    case "renainf": {
+      const r = parsearRenainfDossie(dados);
+      const constatado = r.infracoes.length > 0;
+      const totalFmt = formatarMoedaBRL(r.valor_total_reais);
+      return {
+        constatado,
+        resumo: constatado
+          ? `Renainf: ${r.infracoes.length} infração(ões). Total estimado: ${totalFmt}. ${msgBase}`.trim()
+          : `Renainf: sem infrações registradas. ${msgBase}`.trim(),
+      };
+    }
     default:
       return { constatado: false, resumo: msgBase };
   }
@@ -170,6 +190,12 @@ export async function fetchConsultarPlacaPremiumV2(
   tipo: TipoConsultaRiscoPremium,
   placa: string
 ): Promise<ResultadoFetchPremiumV2> {
+  const timeoutMs =
+    tipo === "leilao"
+      ? FETCH_TIMEOUT_MS_LEILAO_PRIME
+      : tipo === "renainf"
+        ? FETCH_TIMEOUT_MS_RENAINF
+        : FETCH_TIMEOUT_MS_EXTERNAL;
   let token: string;
   try {
     token = obterTokenBearerConsultarPlacaV2();
@@ -184,7 +210,7 @@ export async function fetchConsultarPlacaPremiumV2(
 
   const tentar = async (): Promise<ResultadoFetchPremiumV2> => {
     const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS_EXTERNAL);
+    const tid = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetch(url.toString(), {
         method: "GET",
@@ -260,15 +286,35 @@ const inflightPremium = new Map<string, Promise<unknown>>();
 export function withPremiumConsultaDedupe<T>(
   placaNorm: string,
   tipo: TipoConsultaRiscoPremium,
+  clienteId: string,
   fn: () => Promise<T>
 ): Promise<T> {
-  const key = `${placaNorm}|${tipo}`;
+  const cid = (clienteId ?? "").trim() || "anon";
+  const key = `${placaNorm}|${tipo}|${cid}`;
   const existente = inflightPremium.get(key);
   if (existente) return existente as Promise<T>;
   const p = fn().finally(() => {
     inflightPremium.delete(key);
   });
   inflightPremium.set(key, p);
+  return p;
+}
+
+const inflightBlindagem = new Map<string, Promise<unknown>>();
+
+export function withBlindagemCompletaDedupe<T>(
+  placaNorm: string,
+  clienteId: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  const cid = (clienteId ?? "").trim() || "anon";
+  const key = `${placaNorm}|blindagem_completa|${cid}`;
+  const existente = inflightBlindagem.get(key);
+  if (existente) return existente as Promise<T>;
+  const p = fn().finally(() => {
+    inflightBlindagem.delete(key);
+  });
+  inflightBlindagem.set(key, p);
   return p;
 }
 
@@ -289,13 +335,16 @@ export function mockConsultarRiscoApiDeterministico(
     hash = (hash + placa.charCodeAt(i) * (i + 3)) % 1009;
   }
   const tipoOrd =
-    (["leilao", "sinistro", "roubo_furto", "gravame"] as const).indexOf(tipo);
+    (
+      ["leilao", "sinistro", "roubo_furto", "gravame", "renainf"] as const
+    ).indexOf(tipo);
   const constatado = (hash + tipoOrd * 17) % 5 !== 0;
   const nomes: Record<TipoConsultaRiscoPremium, string> = {
     leilao: "Leilão",
     sinistro: "Sinistro",
     roubo_furto: "Roubo/furto",
     gravame: "Gravame",
+    renainf: "Renainf",
   };
   const resumo = constatado
     ? `${nomes[tipo]}: ocorrência indicada nas bases (simulação).`

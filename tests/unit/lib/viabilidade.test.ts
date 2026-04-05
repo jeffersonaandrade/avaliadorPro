@@ -3,11 +3,15 @@ import {
   AJUSTE_FIPE_PCT_MAX,
   AJUSTE_FIPE_PCT_MIN,
   MAX_CENTAVOS_MOEDA,
+  ajustarNegociacaoDescontoRenainf,
   arredondarReais2,
   calcularFaixaNegociacao,
+  calcularLucroEMargemProjecao,
   calcularSimulacaoBase,
   calcularVeredito,
   calcularViabilidade,
+  vereditoPorMargemRealProjecao,
+  vereditoDadosCompletosParaSemaforo,
   centavosDeInputMoedaBr,
   formatarCentavosMoedaCampo,
   parseValorBRL,
@@ -31,6 +35,7 @@ function entradas(
     reparos: 0,
     transporte: 0,
     documentacao: 0,
+    multasDebitosManual: 0,
     outrosCustos: 0,
     pctLucroDesejado: 15,
     pctGorduraNegociacao: 10,
@@ -129,7 +134,7 @@ describe("calcularSimulacaoBase", () => {
 });
 
 describe("calcularFaixaNegociacao", () => {
-  it("retorna null se referência inválida", () => {
+  it("retorna null se venda realista inválida", () => {
     const r = calcularFaixaNegociacao(entradas(), NaN);
     expect(r.ofertaMaximaSugerida).toBeNull();
     expect(r.ofertaInicialAncoragem).toBeNull();
@@ -167,6 +172,116 @@ describe("calcularFaixaNegociacao", () => {
       115_000
     );
     expect(r.ofertaMaximaSugerida).toBe(100_000);
+  });
+});
+
+describe("ajustarNegociacaoDescontoRenainf", () => {
+  it("subtrai multas do teto e mantém proporção da oferta inicial", () => {
+    const r = ajustarNegociacaoDescontoRenainf(100_000, 90_000, 10_000);
+    expect(r.ofertaMaximaSugerida).toBe(90_000);
+    expect(r.ofertaInicialAncoragem).toBe(81_000);
+  });
+
+  it("não altera quando desconto é zero ou inválido", () => {
+    const r = ajustarNegociacaoDescontoRenainf(50_000, 45_000, 0);
+    expect(r.ofertaMaximaSugerida).toBe(50_000);
+    expect(r.ofertaInicialAncoragem).toBe(45_000);
+  });
+
+  it("teto não fica negativo", () => {
+    const r = ajustarNegociacaoDescontoRenainf(5_000, 4_000, 20_000);
+    expect(r.ofertaMaximaSugerida).toBe(0);
+    expect(r.ofertaInicialAncoragem).toBe(0);
+  });
+});
+
+describe("vereditoPorMargemRealProjecao", () => {
+  it("arriscado abaixo de 5% ou prejuízo", () => {
+    expect(vereditoPorMargemRealProjecao(4.9)).toBe("arriscado");
+    expect(vereditoPorMargemRealProjecao(-2)).toBe("arriscado");
+  });
+
+  it("atenção entre 5% e 15%", () => {
+    expect(vereditoPorMargemRealProjecao(5)).toBe("atencao");
+    expect(vereditoPorMargemRealProjecao(15)).toBe("atencao");
+  });
+
+  it("viável acima de 15%", () => {
+    expect(vereditoPorMargemRealProjecao(15.01)).toBe("viavel");
+  });
+
+  it("indefinido sem margem", () => {
+    expect(vereditoPorMargemRealProjecao(null)).toBe("indefinido");
+  });
+});
+
+describe("vereditoDadosCompletosParaSemaforo", () => {
+  it("false sem contexto FIPE na decisão", () => {
+    expect(
+      vereditoDadosCompletosParaSemaforo(entradas({ precoPedido: 50_000 }), {
+        contextoFipeMercadoAtivo: false,
+        vendaRealistaReais: 80_000,
+      })
+    ).toBe(false);
+  });
+
+  it("false sem venda realista válida", () => {
+    expect(
+      vereditoDadosCompletosParaSemaforo(entradas({ precoPedido: 50_000 }), {
+        contextoFipeMercadoAtivo: true,
+        vendaRealistaReais: 0,
+      })
+    ).toBe(false);
+  });
+
+  it("false sem preço de compra informado", () => {
+    expect(
+      vereditoDadosCompletosParaSemaforo(
+        entradas({
+          precoPedido: 0,
+          reparos: 1,
+          transporte: 1,
+          documentacao: 1,
+          multasDebitosManual: 0,
+          outrosCustos: 0,
+        }),
+        { contextoFipeMercadoAtivo: true, vendaRealistaReais: 90_000 }
+      )
+    ).toBe(false);
+  });
+
+  it("true com compra, custos finitos e venda realista", () => {
+    expect(
+      vereditoDadosCompletosParaSemaforo(
+        entradas({
+          precoPedido: 40_000,
+          reparos: 2_000,
+          transporte: 500,
+          documentacao: 300,
+          multasDebitosManual: 0,
+          outrosCustos: 0,
+        }),
+        { contextoFipeMercadoAtivo: true, vendaRealistaReais: 85_000 }
+      )
+    ).toBe(true);
+  });
+});
+
+describe("calcularLucroEMargemProjecao", () => {
+  it("margem = lucro / (compra + reparos + documentação)", () => {
+    const { lucroProjetado, margemRealProjecaoPct } = calcularLucroEMargemProjecao(
+      100_000,
+      entradas({
+        precoPedido: 50_000,
+        reparos: 10_000,
+        documentacao: 5_000,
+        multasDebitosManual: 0,
+        transporte: 0,
+        outrosCustos: 0,
+      })
+    );
+    expect(lucroProjetado).toBe(35_000);
+    expect(margemRealProjecaoPct).toBe(53.85);
   });
 });
 
@@ -219,7 +334,33 @@ describe("calcularViabilidade", () => {
     expect(r.margemRealSobreFipePct).toBeCloseTo(-95, 5);
     expect(r.ofertaMaximaSugerida).toBe(95_000);
     expect(r.ofertaInicialAncoragem).toBe(85_500);
+    expect(r.margemRealProjecaoPct).not.toBeNull();
     expect(r.veredito).toBe("viavel");
+  });
+
+  it("teto segue venda realista informada (não só FIPE ajustada)", () => {
+    const r = calcularViabilidade(
+      entradas({
+        reparos: 5_000,
+        pctLucroDesejado: 0,
+        pctGorduraNegociacao: 10,
+      }),
+      "R$ 100.000,00",
+      { vendaRealistaReais: 90_000 }
+    );
+    expect(r.ofertaMaximaSugerida).toBe(85_000);
+  });
+
+  it("multas manuais reduzem o teto", () => {
+    const sem = calcularViabilidade(
+      entradas({ reparos: 0, pctLucroDesejado: 0, multasDebitosManual: 0 }),
+      "R$ 50.000,00"
+    );
+    const com = calcularViabilidade(
+      entradas({ reparos: 0, pctLucroDesejado: 0, multasDebitosManual: 3_000 }),
+      "R$ 50.000,00"
+    );
+    expect(com.ofertaMaximaSugerida).toBe((sem.ofertaMaximaSugerida ?? 0) - 3_000);
   });
 
   it("FIPE inválida: sem oferta nem margem", () => {

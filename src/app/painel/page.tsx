@@ -3,6 +3,7 @@ import Link from "next/link";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { BuscaPlaca } from "@/components/BuscaPlaca";
 import { DemoModeBanner } from "@/components/DemoModeBanner";
+import { isPublicDemoMocksMode } from "@/lib/demo-mocks";
 
 export const metadata = {
   title: "Painel",
@@ -21,6 +22,15 @@ export default function PainelPage() {
           >
             ← Site
           </Link>
+          {isPublicDemoMocksMode() ? (
+            <Link
+              href="/admin"
+              className="text-xs font-medium text-indigo-600/90 transition hover:text-indigo-800"
+              data-testid="link-admin-demo"
+            >
+              Admin (demo)
+            </Link>
+          ) : null}
           <SignOutButton />
         </div>
       </div>

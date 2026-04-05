@@ -1,5 +1,6 @@
 "use server";
 
+import { registrarEventoAuditoriaConsulta } from "@/lib/consulta-audit-log";
 import { MOCK_DEMO_USER_ID, isPublicDemoMocksMode } from "@/lib/demo-mocks";
 import { supabaseAdmin } from "@/lib/supabase";
 import { consultarInformacoesBasicas } from "@/lib/consultar-placa";
@@ -331,6 +332,14 @@ export async function buscarVeiculoAction(
       const linha = row as LinhaConsulta;
       const refTs = timestampReferenciaCache(linha);
       if (cacheBasicoEstaFresco(refTs)) {
+        registrarEventoAuditoriaConsulta({
+          usuarioId: idCliente,
+          placa: placaNorm,
+          custoRealReais: 0,
+          statusDebito: "nao_aplicavel_cache",
+          tipo: "uso_cache_basico",
+          detalhe: "consulta_veiculo_ttl",
+        });
         return mapRowToSuccess(linha, "cache");
       }
       return consultarVeiculoNaApiEPersistir(

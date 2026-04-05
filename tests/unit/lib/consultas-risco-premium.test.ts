@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  blindagemCompletaJaAtiva,
   constatadoTriStateConsultaPlaca,
   criarRiscosPremiumSimuladosExibicao,
   dadosLeilaoSemConsultasPremium,
@@ -80,7 +81,7 @@ describe("extrairRiscosCarregadosDeDadosLeilao", () => {
 });
 
 describe("criarRiscosPremiumSimuladosExibicao", () => {
-  it("preenche os quatro tipos com Sim/Não explícitos na mensagem", () => {
+  it("preenche os tipos premium com Sim/Não explícitos na mensagem", () => {
     const iso = "2026-01-01T00:00:00.000Z";
     const m = criarRiscosPremiumSimuladosExibicao(iso);
     expect(m.leilao?.consultadoEm).toBe(iso);
@@ -90,6 +91,58 @@ describe("criarRiscosPremiumSimuladosExibicao", () => {
     expect(m.sinistro?.resumo).toContain("Sinistro: Sim");
     expect(m.roubo_furto?.resumo).toContain("Não");
     expect(m.gravame?.resumo).toContain("Não");
+    expect(m.renainf?.resumo).toContain("Renainf: Não");
+  });
+});
+
+describe("blindagemCompletaJaAtiva", () => {
+  const isoFresco = new Date().toISOString();
+  const itemFresco = {
+    consultado_em: isoFresco,
+    constatado: false,
+    resumo: "ok",
+  };
+
+  it("false sem todos os tipos premium consultados", () => {
+    expect(
+      blindagemCompletaJaAtiva({
+        consultas_premium: { leilao: itemFresco },
+      })
+    ).toBe(false);
+  });
+
+  it("true quando todos os tipos premium têm cache dentro do TTL (7 dias)", () => {
+    expect(
+      blindagemCompletaJaAtiva({
+        consultas_premium: {
+          leilao: itemFresco,
+          sinistro: itemFresco,
+          roubo_furto: itemFresco,
+          gravame: itemFresco,
+          renainf: itemFresco,
+        },
+      })
+    ).toBe(true);
+  });
+
+  it("false quando consulta existe mas está expirada (fora do TTL)", () => {
+    const isoVelho = new Date(Date.now() - 8 * 86_400_000).toISOString();
+    const itemVelho = {
+      consultado_em: isoVelho,
+      constatado: false,
+      resumo: "ok",
+    };
+    expect(
+      blindagemCompletaJaAtiva({
+        consultas_premium: {
+          leilao: itemVelho,
+          sinistro: itemVelho,
+          roubo_furto: itemVelho,
+          gravame: itemVelho,
+          renainf: itemVelho,
+        },
+      })
+    ).toBe(false);
   });
 });
 
@@ -99,6 +152,7 @@ describe("mergeFlagsComConsultasPremium", () => {
     sinistro: false,
     roubo: true,
     gravame: false,
+    renainf: false,
   };
 
   it("sobrescreve flags com resultado premium", () => {

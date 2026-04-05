@@ -6,6 +6,8 @@ export const FATORES_RISCO = {
   sinistro: -0.15,
   roubo: -0.1,
   gravame: -0.05,
+  /** Multas entram no teto em reais; sem desconto percentual extra na FIPE. */
+  renainf: 0,
 } as const;
 
 export type ChaveFatorRisco = keyof typeof FATORES_RISCO;
@@ -35,6 +37,7 @@ const SINONIMOS_FATOR: Record<ChaveFatorRisco, string[]> = {
     "restricao_financeira",
     "restricao",
   ],
+  renainf: ["renainf", "infracoes_renainf", "multas"],
 };
 
 function normChaveHistorico(s: string): string {
@@ -50,6 +53,7 @@ const CONJUNTOS_CHAVE_FATOR: Record<ChaveFatorRisco, Set<string>> = {
   sinistro: new Set(SINONIMOS_FATOR.sinistro.map(normChaveHistorico)),
   roubo: new Set(SINONIMOS_FATOR.roubo.map(normChaveHistorico)),
   gravame: new Set(SINONIMOS_FATOR.gravame.map(normChaveHistorico)),
+  renainf: new Set(SINONIMOS_FATOR.renainf.map(normChaveHistorico)),
 };
 
 /** Caminhos normalizados da API Consultar Placa v2 (para `possui_registro` / `possui_gravame`). */
@@ -102,6 +106,7 @@ export function extrairFlagsHistoricoVeiculo(
     sinistro: false,
     roubo: false,
     gravame: false,
+    renainf: false,
   };
 
   function visit(node: unknown, depth: number, pathNorm: string[]) {

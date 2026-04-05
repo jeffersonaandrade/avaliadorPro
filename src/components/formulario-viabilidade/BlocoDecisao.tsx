@@ -27,7 +27,6 @@ export function BlocoDecisaoPrincipal({
   ofertaMaxima,
   ofertaInicial,
   veredito,
-  vendaUltrapassaFipe,
   meta,
   aguardandoInclusaoFipeMercado,
 }: {
@@ -35,7 +34,7 @@ export function BlocoDecisaoPrincipal({
   ofertaMaxima: number | null;
   ofertaInicial: number | null;
   veredito: VereditoViabilidade;
-  vendaUltrapassaFipe: boolean;
+  vendaUltrapassaFipe?: boolean;
   meta: { titulo: string; subtitulo: string };
   aguardandoInclusaoFipeMercado?: boolean;
 }) {
@@ -43,9 +42,7 @@ export function BlocoDecisaoPrincipal({
     veredito === "viavel"
       ? "border-emerald-400/40 bg-emerald-950/40 text-emerald-100"
       : veredito === "arriscado"
-        ? vendaUltrapassaFipe
-          ? "border-red-400/40 bg-red-950/35 text-red-100"
-          : "border-amber-400/40 bg-amber-950/35 text-amber-100"
+        ? "border-red-400/40 bg-red-950/35 text-red-100"
         : veredito === "atencao"
           ? "border-amber-400/35 bg-amber-950/30 text-amber-50"
           : "border-slate-500/40 bg-slate-800/80 text-slate-200";
@@ -70,8 +67,9 @@ export function BlocoDecisaoPrincipal({
       </div>
       {temNegociacao && ofertaMaxima !== null ? (
         <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed text-slate-400">
-          Máximo que você pode pagar pelo veículo mantendo a FIPE de referência, os custos informados e sua meta
-          de lucro — não é o que o vendedor pede.
+          Máximo que você pode pagar mantendo a <strong className="text-slate-300">venda realista</strong> de
+          mercado, os custos (incl. multas/documentação manuais) e sua meta de lucro — não é o que o vendedor
+          pede.
         </p>
       ) : null}
       {!temNegociacao ? (
@@ -106,7 +104,7 @@ export function BlocoDecisaoPrincipal({
           {veredito === "viavel" ? (
             <CheckCircle2 className="mx-auto size-8 shrink-0 text-emerald-400 sm:mx-0" />
           ) : veredito === "arriscado" ? (
-            <AlertTriangle className="mx-auto size-8 shrink-0 text-orange-300 sm:mx-0" />
+            <AlertTriangle className="mx-auto size-8 shrink-0 text-red-300 sm:mx-0" />
           ) : veredito === "atencao" ? (
             <AlertTriangle className="mx-auto size-8 shrink-0 text-amber-300 sm:mx-0" />
           ) : (

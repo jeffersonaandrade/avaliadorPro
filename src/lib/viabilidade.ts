@@ -82,6 +82,11 @@ export type EntradasViabilidade = {
   reparos: number;
   transporte: number;
   documentacao: number;
+  /**
+   * Multas e débitos estimados (entrada manual no painel).
+   * Entram no teto de compra e no lucro projetado; não disparam chamadas extras à API.
+   */
+  multasDebitosManual: number;
   /** Comissão, garantia, pátio, imprevistos etc. */
   outrosCustos: number;
   pctLucroDesejado: number;
@@ -99,10 +104,17 @@ export type ResultadoViabilidade = {
   precoVendaSugerido: number;
   /** (vendaSugerida - FIPE) / FIPE * 100 — null se FIPE inválida */
   margemRealSobreFipePct: number | null;
+  /**
+   * (lucro_projetado / (preço_compra + reparos + documentação)) × 100.
+   * Lucro projetado = venda_realista − compra − reparos − documentação − multas − transporte − outros.
+   */
+  margemRealProjecaoPct: number | null;
+  /** Lucro em reais usado na margem acima (null se margem indisponível). */
+  lucroProjetadoMargem: number | null;
   veredito: VereditoViabilidade;
   /**
-   * Maior preço de compra possível mantendo venda sugerida ≤ FIPE e o % de lucro sobre custo total.
-   * null se FIPE inválida.
+   * Teto com base na **venda realista** (não só FIPE tabela): venda/(1+lucro%) − custos operacionais.
+   * null se referência de venda inválida.
    */
   ofertaMaximaSugerida: number | null;
   /** Ponto de ancoragem: abaixo da máxima conforme % de gordura do lojista. null se FIPE inválida. */
@@ -118,30 +130,29 @@ export function arredondarReais2(n: number): number {
 }
 
 /**
- * Teto de referência = FIPE (ou FIPE ajustada pelo lojista). Com lucro p% sobre custo total:
- * venda = custoTotal * (1+p/100) ≤ referência (na prática o parâmetro já vem ajustado quando aplicável).
- * Oferta máxima de compra = referência/(1+p/100) − (reparos+transporte+doc+outros).
+ * Teto de compra = venda_realista / (1 + lucro%/100) − (reparos + transporte + documentação + multas manuais + outros).
+ * A venda realista vem da referência de mercado ajustada (FIPE × fatores), não da FIPE “seca”.
  */
 export function calcularFaixaNegociacao(
   entradas: EntradasViabilidade,
-  fipeReferenciaNegociacao: number
+  vendaRealistaReais: number
 ): { ofertaMaximaSugerida: number | null; ofertaInicialAncoragem: number | null } {
-  if (
-    !Number.isFinite(fipeReferenciaNegociacao) ||
-    fipeReferenciaNegociacao <= 0
-  ) {
+  if (!Number.isFinite(vendaRealistaReais) || vendaRealistaReais <= 0) {
     return { ofertaMaximaSugerida: null, ofertaInicialAncoragem: null };
   }
   const pct = Math.max(0, entradas.pctLucroDesejado);
   const divisor = 1 + pct / 100;
+  const multas = Number.isFinite(entradas.multasDebitosManual)
+    ? Math.max(0, entradas.multasDebitosManual)
+    : 0;
   const custosFixos =
     (Number.isFinite(entradas.reparos) ? entradas.reparos : 0) +
     (Number.isFinite(entradas.transporte) ? entradas.transporte : 0) +
     (Number.isFinite(entradas.documentacao) ? entradas.documentacao : 0) +
+    multas +
     (Number.isFinite(entradas.outrosCustos) ? entradas.outrosCustos : 0);
-  const custoTotalMaximo = fipeReferenciaNegociacao / divisor;
   const ofertaMaximaSugerida = arredondarReais2(
-    Math.max(0, custoTotalMaximo - custosFixos)
+    Math.max(0, vendaRealistaReais / divisor - custosFixos)
   );
   const g = Number.isFinite(entradas.pctGorduraNegociacao)
     ? Math.min(100, Math.max(0, entradas.pctGorduraNegociacao))
@@ -151,6 +162,46 @@ export function calcularFaixaNegociacao(
     Math.max(0, ofertaMaximaSugerida * fatorInicial)
   );
   return { ofertaMaximaSugerida, ofertaInicialAncoragem };
+}
+
+/**
+ * Reduz teto e âncora de negociação pelo total estimado de multas (Renainf),
+ * mantendo a mesma proporção entre oferta inicial e teto.
+ */
+export function ajustarNegociacaoDescontoRenainf(
+  ofertaMaxima: number | null,
+  ofertaInicial: number | null,
+  descontoRenainfReais: number
+): { ofertaMaximaSugerida: number | null; ofertaInicialAncoragem: number | null } {
+  const desc = Number.isFinite(descontoRenainfReais)
+    ? Math.max(0, descontoRenainfReais)
+    : 0;
+  if (desc <= 0) {
+    return {
+      ofertaMaximaSugerida: ofertaMaxima,
+      ofertaInicialAncoragem: ofertaInicial,
+    };
+  }
+  if (ofertaMaxima === null || !Number.isFinite(ofertaMaxima)) {
+    return { ofertaMaximaSugerida: null, ofertaInicialAncoragem: null };
+  }
+  const novaMax = arredondarReais2(Math.max(0, ofertaMaxima - desc));
+  if (
+    ofertaInicial === null ||
+    !Number.isFinite(ofertaInicial) ||
+    ofertaMaxima <= 0
+  ) {
+    return {
+      ofertaMaximaSugerida: novaMax,
+      ofertaInicialAncoragem: ofertaInicial,
+    };
+  }
+  const ratio = ofertaInicial / ofertaMaxima;
+  const novaInicial = arredondarReais2(Math.max(0, novaMax * ratio));
+  return {
+    ofertaMaximaSugerida: novaMax,
+    ofertaInicialAncoragem: novaInicial,
+  };
 }
 
 export function calcularVeredito(
@@ -168,6 +219,89 @@ export function calcularVeredito(
   if (rVenda > 1) return "arriscado";
   if (rVenda <= LIMIAR_VENDA_VIAVEL) return "viavel";
   return "atencao";
+}
+
+/**
+ * Lucro projetado e margem % sobre (compra + reparos + documentação), conforme regra de negócio do painel.
+ */
+export function calcularLucroEMargemProjecao(
+  vendaRealista: number,
+  entradas: EntradasViabilidade
+): { lucroProjetado: number; margemRealProjecaoPct: number | null } {
+  if (!Number.isFinite(vendaRealista) || vendaRealista <= 0) {
+    return { lucroProjetado: 0, margemRealProjecaoPct: null };
+  }
+  const P = Number.isFinite(entradas.precoPedido)
+    ? Math.max(0, entradas.precoPedido)
+    : 0;
+  const R = Number.isFinite(entradas.reparos) ? Math.max(0, entradas.reparos) : 0;
+  const D = Number.isFinite(entradas.documentacao)
+    ? Math.max(0, entradas.documentacao)
+    : 0;
+  const M = Number.isFinite(entradas.multasDebitosManual)
+    ? Math.max(0, entradas.multasDebitosManual)
+    : 0;
+  const T = Number.isFinite(entradas.transporte)
+    ? Math.max(0, entradas.transporte)
+    : 0;
+  const O = Number.isFinite(entradas.outrosCustos)
+    ? Math.max(0, entradas.outrosCustos)
+    : 0;
+  const custoTotalVeiculo = P + R + D;
+  const lucroProjetado = arredondarReais2(
+    vendaRealista - P - R - D - M - T - O
+  );
+  const margemRealProjecaoPct =
+    custoTotalVeiculo > 0
+      ? Math.round((lucroProjetado / custoTotalVeiculo) * 10000) / 100
+      : null;
+  return { lucroProjetado, margemRealProjecaoPct };
+}
+
+/** Semáforo do painel / PDF: margem sobre (compra + reparos + documentação). */
+export function vereditoPorMargemRealProjecao(
+  margemPct: number | null
+): VereditoViabilidade {
+  if (margemPct === null || !Number.isFinite(margemPct)) return "indefinido";
+  if (margemPct < 5) return "arriscado";
+  if (margemPct <= 15) return "atencao";
+  return "viavel";
+}
+
+/**
+ * O semáforo (🔴🟡🟢) só deve usar cores reais quando a margem reflete todos os insumos
+ * da decisão: compra, custos operacionais, venda realista (FIPE no contexto) e meta de lucro %.
+ * Alinha ao teto: venda realista − (R+T+D+M+O) após aplicar lucro % na oferta máxima.
+ */
+export function vereditoDadosCompletosParaSemaforo(
+  entradas: EntradasViabilidade,
+  opts: { contextoFipeMercadoAtivo: boolean; vendaRealistaReais: number }
+): boolean {
+  if (!opts.contextoFipeMercadoAtivo) return false;
+  if (
+    !Number.isFinite(opts.vendaRealistaReais) ||
+    opts.vendaRealistaReais <= 0
+  ) {
+    return false;
+  }
+  const P = entradas.precoPedido;
+  if (!Number.isFinite(P) || P <= 0) return false;
+  const custos: (keyof EntradasViabilidade)[] = [
+    "reparos",
+    "transporte",
+    "documentacao",
+    "multasDebitosManual",
+    "outrosCustos",
+  ];
+  for (const k of custos) {
+    const v = entradas[k];
+    if (typeof v !== "number" || !Number.isFinite(v) || v < 0) return false;
+  }
+  const lucro = entradas.pctLucroDesejado;
+  if (typeof lucro !== "number" || !Number.isFinite(lucro) || lucro < 0) {
+    return false;
+  }
+  return true;
 }
 
 /** Resultado da simulação base (sem FIPE). */
@@ -196,15 +330,20 @@ export function calcularSimulacaoBase(
     reparos,
     transporte,
     documentacao,
+    multasDebitosManual,
     outrosCustos,
     pctLucroDesejado,
     precoVendaEsperado,
   } = entradas;
 
+  const multas = Number.isFinite(multasDebitosManual)
+    ? Math.max(0, multasDebitosManual)
+    : 0;
   const custoTotal =
     (Number.isFinite(reparos) ? reparos : 0) +
     (Number.isFinite(transporte) ? transporte : 0) +
     (Number.isFinite(documentacao) ? documentacao : 0) +
+    multas +
     (Number.isFinite(outrosCustos) ? outrosCustos : 0);
 
   const pct = Number.isFinite(pctLucroDesejado) ? pctLucroDesejado : 0;
@@ -252,9 +391,18 @@ export function calcularSimulacaoBase(
   };
 }
 
+export type OpcoesCalcularViabilidade = {
+  /**
+   * Venda realista de mercado (FIPE × ajustes × risco). Quando omitida, usa-se a FIPE
+   * ajustada só pelo % manual (sem impacto de histórico) para o teto — útil no servidor.
+   */
+  vendaRealistaReais?: number | null;
+};
+
 export function calcularViabilidade(
   entradas: EntradasViabilidade,
-  fipeReferenciaTexto: string
+  fipeReferenciaTexto: string,
+  opcoes?: OpcoesCalcularViabilidade
 ): ResultadoViabilidade {
   const sim = calcularSimulacaoBase(entradas);
   const { custoTotal, precoVendaSugerido } = sim;
@@ -265,12 +413,6 @@ export function calcularViabilidade(
     margemRealSobreFipePct =
       ((precoVendaSugerido - fipeReferencia) / fipeReferencia) * 100;
   }
-
-  const veredito = calcularVeredito(
-    fipeReferencia,
-    custoTotal,
-    precoVendaSugerido
-  );
 
   const ajusteBruto = Number.isFinite(entradas.ajusteFipePct)
     ? entradas.ajusteFipePct
@@ -284,13 +426,32 @@ export function calcularViabilidade(
       ? arredondarReais2(fipeReferencia * (1 + ajusteFipePct / 100))
       : NaN;
 
+  const vendaParaTeto =
+    opcoes?.vendaRealistaReais != null &&
+    Number.isFinite(opcoes.vendaRealistaReais) &&
+    opcoes.vendaRealistaReais > 0
+      ? opcoes.vendaRealistaReais
+      : fipeParaNegociacao;
+
   const { ofertaMaximaSugerida, ofertaInicialAncoragem } =
-    calcularFaixaNegociacao(entradas, fipeParaNegociacao);
+    Number.isFinite(vendaParaTeto) && vendaParaTeto > 0
+      ? calcularFaixaNegociacao(entradas, vendaParaTeto)
+      : { ofertaMaximaSugerida: null, ofertaInicialAncoragem: null };
+
+  const { lucroProjetado, margemRealProjecaoPct } =
+    Number.isFinite(vendaParaTeto) && vendaParaTeto > 0
+      ? calcularLucroEMargemProjecao(vendaParaTeto, entradas)
+      : { lucroProjetado: 0, margemRealProjecaoPct: null };
+
+  const veredito = vereditoPorMargemRealProjecao(margemRealProjecaoPct);
 
   return {
     custoTotal,
     precoVendaSugerido,
     margemRealSobreFipePct,
+    margemRealProjecaoPct,
+    lucroProjetadoMargem:
+      margemRealProjecaoPct !== null ? lucroProjetado : null,
     veredito,
     ofertaMaximaSugerida,
     ofertaInicialAncoragem,
@@ -322,5 +483,6 @@ export function simulacaoFromJSON(
     pctGorduraNegociacao: num("pctGorduraNegociacao"),
     ajusteFipePct: num("ajusteFipePct"),
     precoVendaEsperado: num("precoVendaEsperado"),
+    multasDebitosManual: num("multasDebitosManual"),
   };
 }

@@ -97,12 +97,38 @@ CREATE TABLE IF NOT EXISTS public.usuario_acesso (
 
 COMMENT ON TABLE public.usuario_acesso IS 'Por identificador de cliente (localStorage até auth real): plano, cota FIPE mensal UTC e créditos premium.';
 COMMENT ON COLUMN public.usuario_acesso.fipe_mes_referencia IS 'YYYY-MM UTC; ao mudar o mês, o app zera consultas_fipe_utilizadas.';
-COMMENT ON COLUMN public.usuario_acesso.creditos_premium IS 'Saldo para análises premium (leilão, sinistro, etc.); debitado após gravação bem-sucedida.';
+COMMENT ON COLUMN public.usuario_acesso.creditos_premium IS 'Saldo para blindagem completa (leilão, sinistro, roubo, gravame, Renainf); debitado após gravação bem-sucedida.';
 
 CREATE INDEX IF NOT EXISTS idx_usuario_acesso_atualizado
   ON public.usuario_acesso (atualizado_em DESC);
 
 ALTER TABLE public.usuario_acesso ENABLE ROW LEVEL SECURITY;
+
+-- Auditoria de consultas premium (eventos CONSULTA_*, CACHE_HIT, CREDITO_CONSUMIDO).
+-- Escrita via service_role nas Server Actions; RLS conforme sua política.
+CREATE TABLE IF NOT EXISTS public.consultas_auditoria_eventos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  cliente_id TEXT NOT NULL,
+  placa TEXT NOT NULL,
+  evento TEXT NOT NULL,
+  tipo_consulta TEXT,
+  detalhe TEXT,
+  valor_evitar_perda NUMERIC(14, 2),
+  tipo_risco_detectado TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_consultas_auditoria_cliente_criado
+  ON public.consultas_auditoria_eventos (cliente_id, criado_em DESC);
+
+CREATE INDEX IF NOT EXISTS idx_consultas_auditoria_placa_criado
+  ON public.consultas_auditoria_eventos (placa, criado_em DESC);
+
+COMMENT ON TABLE public.consultas_auditoria_eventos IS 'Trail de auditoria: início/sucesso/erro/timeout de consultas premium, cache hit e consumo de crédito.';
+COMMENT ON COLUMN public.consultas_auditoria_eventos.valor_evitar_perda IS 'Opcional: valor em R$ associado ao ROI / perda evitada (preenchimento futuro ou job).';
+COMMENT ON COLUMN public.consultas_auditoria_eventos.tipo_risco_detectado IS 'Resumo textual dos tipos com indício constatado (ex.: leilao,sinistro).';
+
+ALTER TABLE public.consultas_auditoria_eventos ENABLE ROW LEVEL SECURITY;
 
 -- Exemplo DEV: service_role no backend ignora RLS; política abaixo só se usar cliente anon direto na tabela.
 -- CREATE POLICY "usuario_acesso_service_only" ON public.usuario_acesso FOR ALL TO service_role USING (true) WITH CHECK (true);

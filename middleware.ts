@@ -41,8 +41,13 @@ export async function middleware(request: NextRequest) {
 
   const demoMocks = isPublicDemoMocksMode();
 
-  // Protege /painel e qualquer subrota (/painel/...) — exceto modo demonstração
-  if (path.startsWith("/painel") && !demoMocks) {
+  // Protege /painel, /creditos, /admin e subrotas — exceto modo demonstração
+  // TODO: Em produção, restringir `/admin` apenas para usuários com role de administrador.
+  const precisaAuth =
+    path.startsWith("/painel") ||
+    path.startsWith("/creditos") ||
+    path.startsWith("/admin");
+  if (precisaAuth && !demoMocks) {
     if (!user) {
       const login = new URL("/login", request.url);
       login.searchParams.set("next", path);

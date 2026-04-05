@@ -40,9 +40,9 @@ export function CardEstrategiaNegociacao({
               Estratégia de negociação
             </h4>
             <p className="mt-2 text-xs leading-relaxed text-violet-900/80 sm:text-sm">
-              O teto de compra usa a FIPE com seu ajuste opcional de mercado; custos operacionais informados, lucro desejado
-              ({pctLucroFmt}% sobre esses custos) e gordura de negociação ({pctGordura}% entre o teto e a oferta
-              inicial). O bloco principal acima reflete o que você definiu nos campos.
+              O limite sugerido (“não pague mais que”) usa a FIPE com seu ajuste opcional de mercado; custos operacionais
+              informados, lucro desejado ({pctLucroFmt}% sobre esses custos) e gordura de negociação ({pctGordura}% entre
+              esse limite e a oferta inicial). O destaque da decisão reflete o que você definiu nos campos.
             </p>
             <button
               type="button"
@@ -64,16 +64,16 @@ export function CardEstrategiaNegociacao({
                   FIPE para negociação = Referência FIPE (tabela) × (1 + Ajuste%)
                 </p>
                 <p className="mt-2 font-mono text-[11px] leading-relaxed text-slate-600 sm:text-xs">
-                  Teto de compra = (FIPE para negociação ÷ (1 + Lucro%)) − Custos extras
+                  Não pague mais que = (FIPE para negociação ÷ (1 + Lucro%)) − Custos extras
                 </p>
                 <p className="mt-2 font-mono text-[11px] leading-relaxed text-slate-600 sm:text-xs">
                   Custos extras = Reparos + Transporte + Documentação + Outros custos
                 </p>
                 <p className="mt-2 font-mono text-[11px] leading-relaxed text-slate-600 sm:text-xs">
-                  Comece oferecendo = teto − % de gordura (sobre o teto)
+                  Comece oferecendo = limite sugerido − % de gordura (sobre o limite)
                 </p>
                 <p className="mt-1 font-mono text-[11px] leading-relaxed text-slate-500 sm:text-xs">
-                  = Teto de compra × (1 − Gordura%)
+                  = Limite sugerido × (1 − Gordura%)
                 </p>
                 <p className={`mt-2 border-t border-violet-100 pt-2 ${legendaCls}`}>
                   A gordura é aplicada em cima da oferta máxima, sem alterar sua meta de lucro sobre o custo total.

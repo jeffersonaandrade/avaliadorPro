@@ -17,13 +17,14 @@ SaaS B2B para **consulta por placa** (dados do veículo + referência FIPE), **s
 | Landing (marketing, dark) | `src/app/page.tsx`, `src/components/landing/RadarAnimation.tsx`, `src/lib/planos-marketing.ts` |
 | Auth | `src/app/login/`, `src/app/cadastro/`, `src/actions/auth-actions.ts`, `middleware.ts`, `src/app/auth/callback/route.ts`, `src/utils/supabase/*` (`@supabase/ssr`) |
 | Painel (app + busca) | `src/app/painel/page.tsx`, `src/components/BuscaPlaca.tsx` |
-| Formulário de viabilidade | `src/components/formulario-viabilidade/FormularioViabilidade.tsx` |
+| Formulário de viabilidade | `FormularioViabilidade.tsx` + blocos `DecisionCard`, `RiskConversionBlock`, `RefinementPanel`, `CalculationDetailsAccordion` (decisão → refinamento → memória de cálculo) |
 | Motor de viabilidade (puro) | `src/lib/viabilidade.ts` |
 | Ajustes de mercado na UI (FIPE + histórico) | `src/components/formulario-viabilidade/FormularioViabilidade.tsx`, `historico-veiculo.ts` |
 | Placa + cache + FIPE | `src/actions/veiculo-actions.ts`, `src/lib/consultar-placa.ts`, `src/lib/fipe-resolver.ts`, `src/lib/fetch-timeout-ms.ts` (8s, Netlify Free) |
 | Plano / limite FIPE / créditos | `src/lib/usuario-acesso.ts`, `src/actions/acesso-actions.ts` |
 | Salvar simulação | `src/actions/viabilidade-actions.ts` |
 | Consultas premium | `src/actions/consultas-risco-actions.ts`, `src/lib/consultas-risco-premium.ts`, `src/lib/consultar-placa-premium-v2.ts` |
+| Admin / auditoria / antifraude (buffer memória) | `src/app/admin/page.tsx`, `src/lib/consulta-audit-log.ts`, `src/lib/premium-security.ts`, `src/lib/premium-kill-switch.ts`, `src/actions/admin-actions.ts` |
 | Schema Supabase | `database.sql` |
 | Identificação anônima | `localStorage` `avaliadorPro_client_id` — `src/lib/client-id.ts` |
 
@@ -56,19 +57,29 @@ SaaS B2B para **consulta por placa** (dados do veículo + referência FIPE), **s
 - Campos monetários em **centavos** na UI (máscara tipo caixa).
 - **Auto-save** com debounce (`DEBOUNCE_MS` = 700 ms) via `salvarSimulacaoViabilidadeAction`, desde que plano ativo.
 - Toggle **“incluir referência FIPE na decisão”** (`fipeCarregada`): quando ligado e FIPE válida na consulta, calcula teto, oferta inicial e veredito; quando desligado, persiste só simulação base (sem contexto FIPE no JSON salvo).
+- **Exportar relatório PDF** (`ExportReportButton`, `RelatorioAnalisePdf`, `export-pdf.ts`): captura o bloco `#area-relatorio` com `html2canvas` + `jspdf` (A4, multipágina). Placa demo ou `sandboxAtivo` → aviso “dados simulados”. O botão usa `pdf-exclude` e fica fora do nó capturado.
 
-### 3.4 Consultas premium (risco)
+### 3.4 Consultas premium (risco) — blindagem completa
 
-- Tipos: leilão, sinistro, roubo/furto, gravame (`consultas-risco-premium.ts`).
-- Exige análise da placa já existente em `consultas_veiculos`, plano ativo e **`creditos_premium >= 1`** (em modo mock `NEXT_PUBLIC_USE_MOCKS=true` o crédito não é exigido nem debitado).
-- Se já existe resultado salvo em `dados_leilao.consultas_premium[tipo]` com **TTL de 7 dias** → **retorna cache sem debitar** nem chamar API.
-- Produção: **Consultar Placa v2** (`src/lib/consultar-placa-premium-v2.ts`, `consultas-risco-actions.ts`) — Bearer `API_CONSULTAR_PLACA_TOKEN`, timeout **8 s** (ver §7), retry em rede, validação e normalização para `mergeFlagsComConsultasPremium`.
-- `NEXT_PUBLIC_USE_MOCKS=true`: resposta **mock** determinística; grava em JSON; **sem débito** de crédito.
-- UI: preços exibidos são **rótulos** (`constants.ts`); cobrança real ainda não integrada a gateway.
+- Tipos persistidos: leilão, sinistro, roubo/furto, gravame, Renainf (`consultas-risco-premium.ts`).
+- **Um crédito** ativa os **cinco** de uma vez para **aquela placa** (`ativarBlindagemCompletaAction`). Com todos os blocos **dentro do TTL de 7 dias** em `dados_leilao.consultas_premium`, **não há nova cobrança** nem chamada à API (`blindagemCompletaJaAtiva` + `consultaPremiumTipoFrescaNoBloco`).
+- Exige análise da placa em `consultas_veiculos`, plano ativo e **`creditos_premium >= 1`** (em modo mock `NEXT_PUBLIC_USE_MOCKS=true` o crédito não é exigido nem debitado).
+- Hit por tipo com **TTL de 7 dias** no fluxo por tipo e no pacote completo (tipos já frescos são pulados no loop da blindagem).
+- Produção: **Consultar Placa v2** (`src/lib/consultar-placa-premium-v2.ts`, `consultas-risco-actions.ts`) — Bearer `API_CONSULTAR_PLACA_TOKEN`. Timeout **8 s** para todas as rotas premium usadas no servidor (inclui Renainf e Leilão Prime, alinhado ao teto Netlify Free). Retry em rede (500 ms). Parsers e dossiê: `src/lib/api-v2/parsers.ts` (`dossie` em `consultas_premium.*`; `evidencias_renainf` espelha o bloco Renainf para legado/PDF). Endpoint Renainf: `/v2/consultarRegistrosInfracoesRenainf`.
+- Placa **`AAA0000`** + mocks: `demo-mocks.ts` (`mockConsultasPremiumBlocoDemo`, Renainf PRF R$ 130,16, leilão classe C / HDI, 3 BOs PR, gravame).
+- `NEXT_PUBLIC_USE_MOCKS=true`: mock rico na placa demo; demais placas seguem mock determinístico simples; **sem débito** de crédito.
+- Preço por unidade de crédito por plano: `planos-marketing.ts` (`precoCreditoPremiumAvulso`); página **`/creditos`** (autenticada como o painel).
 
 ### 3.5 PIX / histórico premium (UI)
 
-- Modal com chave mock (`PIX_CHAVE_MOCK`); fluxo apenas para UX até integração real.
+- Modal único de blindagem com chave mock (`PIX_CHAVE_MOCK`); fluxo apenas para UX até integração real. Sem preço “picado” por tipo na UI.
+
+### 3.6 Centro de comando (`/admin`) e proteção premium
+
+- **Kill switch:** `PREMIUM_API_KILL_SWITCH=true` ou toggle em memória (somente com `NEXT_PUBLIC_USE_MOCKS=true` via `alternarKillSwitchPremiumDemoAction`) bloqueia `consultarRiscoPremiumAction` e `ativarBlindagemCompletaAction` em modo real.
+- **Rate limit (por usuário, em memória):** até 5 consultas premium por minuto; acima de 20 na hora → cooldown de 30 minutos. **Blindagem completa** consome **uma** tentativa de rate limit por ativação (não uma por tipo). **Anti-enumeração:** três placas no padrão antigo sequencial (ex.: AAA0001, AAA0002, AAA0003) → bloqueio ~1 h para auditoria. Em **modo demo público** as checagens são desligadas (`isPublicDemoMocksMode`).
+- **Ordem financeira (produção):** após sucesso da API v2 → **débito de crédito** → **persistência** em `consultas_veiculos`. Falhas geram logs `[INCONSISTENCIA_FINANCEIRA]` no servidor.
+- **Auditoria:** buffer circular em memória (`consulta-audit-log.ts`) + persistência opcional em **`consultas_auditoria_eventos`** no Supabase (`consulta-audit-supabase.ts`, script em `database.sql`): eventos `CONSULTA_INICIO`, `CONSULTA_SUCESSO`, `CONSULTA_ERRO`, `CONSULTA_TIMEOUT`, `CACHE_HIT`, `CREDITO_CONSUMIDO` e campos `tipo_risco_detectado` / `valor_evitar_perda`. KPIs “ao vivo” no admin somam o buffer; em demo a UI usa mocks + dois alertas simulados de uso suspeito.
 
 ---
 
@@ -108,26 +119,34 @@ Usa o mesmo `custoTotal` e `precoVendaSugerido` da simulação base.
 
 `fipeParaNegociacao = arredondar(fipeReferencia × (1 + ajusteFipePct/100))`
 
-**Oferta máxima sugerida** (`calcularFaixaNegociacao`):
+**Oferta máxima sugerida** (`calcularFaixaNegociacao`) — âncora = **venda realista** (no painel: FIPE × (1 + ajuste manual + impacto risco); sem esse dado no servidor: `fipeParaNegociacao`):
 
-- `custoTotalMaximo = fipeParaNegociacao / (1 + pctLucro/100)` com `pct = max(0, pctLucroDesejado)`
-- `custosFixos` = mesma soma reparos+transporte+doc+outros
-- `ofertaMaximaSugerida = max(0, arredondar(custoTotalMaximo − custosFixos))`
+- `ofertaMaximaSugerida = max(0, arredondar(vendaRealista / (1 + pctLucro/100) − custosFixos))`
+- `custosFixos` = reparos + transporte + documentação + **multasDebitosManual** + outros
 
 **Oferta inicial (ancoragem)**:
 
 - `g = pctGorduraNegociacao` limitado a 0…100% (padrão 10% = `GORDURA_NEGOCIACAO_PADRAO`)
 - `ofertaInicialAncoragem = max(0, arredondar(ofertaMaximaSugerida × (1 − g/100)))`
 
-**Veredito** (`calcularVeredito`) — comparações com **FIPE tabela original** (não a “venda realista” da UI):
+**Multas**: valor **manual** (`multasDebitosManual` no formulário); não há desconto automático de Renainf no teto.
 
-- Sem FIPE válida → `indefinido`
-- `rCusto = custoTotal / fipeReferencia` — se `rCusto >= 0.82` → **arriscado**
-- `rVenda = precoVendaSugerido / fipeReferencia` — se `rVenda > 1` → **arriscado**
-- Se `rVenda <= 0.9` → **viavel**
-- Caso contrário → **atencao**
+**Margem real projetada** (`calcularLucroEMargemProjecao`):
 
-*(Os rótulos explicativos estão em `motor-viabilidade-ui.ts`.)*
+- `lucroProjetado = vendaRealista − precoPedido − reparos − documentação − multas − transporte − outros`
+- `margemRealProjecaoPct = (lucroProjetado / (precoPedido + reparos + documentação)) × 100` quando o denominador > 0
+
+**Veredito (semáforo)** — `vereditoPorMargemRealProjecao(margemRealProjecaoPct)`:
+
+- &lt; 5% ou prejuízo → **arriscado**
+- 5% … 15% → **atencao**
+- &gt; 15% → **viavel**
+
+As cores 🔴🟡🟢 só aparecem quando `vereditoDadosCompletosParaSemaforo` é verdadeiro: contexto FIPE na decisão, venda realista &gt; 0, **preço de compra** &gt; 0 e todos os custos operacionais (reparos, transporte, documentação, multas, outros) finitos e ≥ 0, além de lucro % válido.
+
+A função `calcularVeredito` (FIPE vs custo/venda da simulação base) permanece no código para referência legada; o painel e o PDF usam o semáforo por margem.
+
+*(Rótulos em `motor-viabilidade-ui.ts` e `VereditoViabilidade.tsx`.)*
 
 ### 4.3 “Venda realista de mercado” e margem vs FIPE no painel — só na UI
 
@@ -142,6 +161,8 @@ Quando `fipeCarregada` e FIPE válida:
 | Sinistro | −15% |
 | Roubo/furto | −10% |
 | Gravame | −5% |
+
+Na UI (**Ajustar estratégia → Impactos de histórico**), Leilão / Sinistro / Roubo / Gravame podem ser editados em % (padrão −20, −15, −10, −5); Renainf segue 0% na FIPE (multas entram no campo manual).
 
 `impactoTotal = max(-0.5, soma dos fatores true)`
 
@@ -200,7 +221,7 @@ Implementação testável em `src/lib/viabilidade-formulario-calculos.ts` (`calc
 | Consultar Placa | Real (com env vars); substituível por mock HB20 |
 | FIPE Parallelum (`fipe-resolver`) | Real; matching heurístico por marca/modelo/ano |
 | Plano / cotas / créditos | Real (Supabase + service role) |
-| Consultas premium (leilão etc.) | **API real** Consultar Placa v2 (servidor); **mock** com `NEXT_PUBLIC_USE_MOCKS`; cache 7 dias; timeout 8 s (Netlify Free — ver §7) |
+| Consultas premium (leilão etc.) | **API real** Consultar Placa v2 (servidor); **mock** com `NEXT_PUBLIC_USE_MOCKS`; cache 7 dias; timeout **8 s** em todas as rotas premium usadas no app (`fetch-timeout-ms.ts`, alinhado ao Netlify Free) |
 | PIX | **Só UI** |
 | Autenticação usuário (login) | **Não** — só UUID anônimo |
 | TTL cache 30 dias (veículo) | **`buscarVeiculoAction`** — coluna `atualizado_em` (opcional no DDL; fallback `criado_em`). |
@@ -213,8 +234,20 @@ Implementação testável em `src/lib/viabilidade-formulario-calculos.ts` (`calc
 ### 7.1 Gestão de timeout em consultas premium (limites do Netlify)
 
 - **Contexto:** a API da *Consultar Placa* (em especial *Leilão Prime*) pode recomendar timeout da ordem de **até 300 segundos** por causa do processamento (ex.: imagens). O projeto, porém, está pensado para rodar inicialmente no **Netlify (plano Free)**, onde as *Server Functions* têm *hard limit* de **10 segundos** de execução.
-- **Decisão atual (MVP):** adotamos *graceful degradation* (“suicídio controlado”): chamadas HTTP externas no servidor usam `AbortController` com o mesmo teto **`FETCH_TIMEOUT_MS_EXTERNAL` = 8000 ms** (`src/lib/fetch-timeout-ms.ts`) — Consultar Placa básica, premium v2 e FIPE Parallelum. Se a API não responder a tempo, a requisição é cancelada do nosso lado; no premium o crédito **não é debitado**, e a UI pode exibir aviso amigável (sobrecarga / tente de novo).
+- **Decisão atual (MVP):** *graceful degradation*: **`FETCH_TIMEOUT_MS_EXTERNAL` = 8000 ms** para Consultar Placa básica, **todas** as rotas premium v2 (inclui Leilão Prime e Renainf, mesmo valor) e FIPE Parallelum. A API de leilão pode recomendar esperas maiores; no Netlify Free priorizamos não estourar o teto da função — se a API não responder a tempo, cancelamos do nosso lado, **não debitamos crédito** e a UI exibe aviso amigável. Para leilão confiável em produção, avaliar *background jobs* ou hospedagem com funções longas (ver roadmap abaixo).
 - **Roadmap para escala:** quando a lentidão da API de leilão virar métrica relevante em produção, a arquitetura deve evoluir para **Netlify Background Functions** (até ~15 minutos de execução), com **rotina de *polling* no front-end** (ex.: consultar o Supabase a cada *X* segundos até o JSON da resposta estar gravado).
+
+### 7.2 Plano de evolução (timeouts premium — decisão futura)
+
+- **Curto prazo (atual):** timeout único de **8 s** em todas as rotas premium no servidor, para caber no teto do Netlify Free; aceita-se maior taxa de timeout no **Leilão Prime** até haver infraestrutura adequada.
+- **Médio prazo:** fila assíncrona (job + webhook ou polling): cliente dispara blindagem → worker com **5–15 min** → grava `consultas_veiculos` → UI notifica; crédito continua **só após sucesso da API**, antes da persistência.
+- **Alternativa:** hospedar **API Routes** / Edge em provedor com limite de execução alto (VPS, Fly.io, AWS Lambda com timeout estendido) **só** para Leilão Prime, mantendo o restante em 8 s.
+- **Métrica de gatilho:** quando **timeout de leilão** > *X*% das tentativas pagas em 7 dias, priorizar a fila assíncrona ou o endpoint dedicado.
+
+### 7.3 KPI `valor_evitar_perda` (produto)
+
+- Calculado no **servidor** após consulta premium com débito (`calcularValorEvitarPerdaReais`): diferença entre referência FIPE ajustada só por mercado e a mesma referência com **impacto agregado de risco** (mesma lógica de fatores padrão da UI; `ajusteFipePct` lido de `simulacao_viabilidade` quando existir).
+- Persistido em `consultas_auditoria_eventos.valor_evitar_perda` nos eventos **`CREDITO_CONSUMIDO`** (soma mensal no painel: `obterValorProtegidoMesAction` / banner “valor protegido este mês”).
 
 ---
 

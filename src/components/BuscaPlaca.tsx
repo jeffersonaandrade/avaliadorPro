@@ -23,9 +23,13 @@ import {
   type BuscarVeiculoResult,
 } from "@/actions/veiculo-actions";
 import { FormularioViabilidade } from "@/components/FormularioViabilidade";
+import { ValorProtegidoMesBanner } from "@/components/ValorProtegidoMesBanner";
 import { useIdentificadorCliente } from "@/hooks/use-identificador-cliente";
 import { isPublicDemoMocksMode } from "@/lib/demo-mocks";
-import { isResultadoVeiculoModoDemonstracao } from "@/lib/placa-teste-demo";
+import {
+  isPlacaVeiculoDemonstracao,
+  isResultadoVeiculoModoDemonstracao,
+} from "@/lib/placa-teste-demo";
 
 function consultaEhHoje(iso: string): boolean {
   const d = new Date(iso);
@@ -55,6 +59,7 @@ export function BuscaPlaca() {
     null
   );
   const [carregandoAcesso, setCarregandoAcesso] = useState(true);
+  const [tickValorProtegidoMes, setTickValorProtegidoMes] = useState(0);
 
   const aplicarEstadoAcesso = useCallback((s: EstadoAcessoCliente) => {
     setEstadoAcesso(s);
@@ -110,6 +115,7 @@ export function BuscaPlaca() {
         }
         await recarregarEstadoAcesso();
         setResultado(res);
+        setTickValorProtegidoMes((t) => t + 1);
       } catch {
         setErro("Não foi possível concluir a análise. Tente novamente.");
       }
@@ -176,6 +182,14 @@ export function BuscaPlaca() {
             chamado automaticamente enquanto você digita.
           </p>
         </div>
+
+        {estadoAcesso?.planoAtivo && identificador.trim() ? (
+          <ValorProtegidoMesBanner
+            identificadorCliente={identificador}
+            planoAtivo={estadoAcesso.planoAtivo}
+            versaoAtualizacao={tickValorProtegidoMes}
+          />
+        ) : null}
 
         <form
           onSubmit={handleSubmit}
@@ -468,11 +482,21 @@ export function BuscaPlaca() {
               identificadorCliente={identificador}
               creditosPremium={estadoAcesso?.creditosPremium ?? 0}
               planoAtivo={estadoAcesso?.planoAtivo ?? false}
+              relatorioVeiculo={{
+                modelo: resultado.modelo,
+                ano: resultado.ano,
+                marca: resultado.marca,
+                consultadoEmIso: resultado.consultadoEm,
+                relatorioDemonstracao:
+                  resultado.sandboxAtivo ||
+                  isPlacaVeiculoDemonstracao(resultado.placa),
+              }}
               onDadosLeilaoAtualizado={(dadosLeilao) => {
                 setResultado((prev) =>
                   prev?.sucesso ? { ...prev, dadosLeilao } : prev
                 );
                 void recarregarEstadoAcesso();
+                setTickValorProtegidoMes((t) => t + 1);
               }}
             />
           </section>

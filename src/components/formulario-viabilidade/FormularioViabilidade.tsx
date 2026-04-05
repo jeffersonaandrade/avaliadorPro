@@ -8,6 +8,7 @@ import {
   ChevronDown,
   FileText,
   Gauge,
+  Gavel,
   Percent,
   Tag,
   Truck,
@@ -15,11 +16,20 @@ import {
   Wrench,
 } from "lucide-react";
 import { salvarSimulacaoViabilidadeAction } from "@/actions/viabilidade-actions";
+import { ExportReportButton } from "@/components/painel/ExportReportButton";
 import {
+  RelatorioAnalisePdf,
+  type RelatorioVeiculoMeta,
+} from "@/components/painel/RelatorioAnalisePdf";
+import {
+  extrairDebitosRenainfParaPdf,
+  extrairLaudoTecnicoParaPdf,
+} from "@/lib/api-v2/parsers";
+import {
+  blindagemCompletaJaAtiva,
   dadosLeilaoSemConsultasPremium,
   extrairRiscosCarregadosDeDadosLeilao,
   mergeFlagsComConsultasPremium,
-  type TipoConsultaRiscoPremium,
 } from "@/lib/consultas-risco-premium";
 import { isPublicDemoMocksMode } from "@/lib/demo-mocks";
 import { isPlacaVeiculoDemonstracao } from "@/lib/placa-teste-demo";
@@ -38,13 +48,12 @@ import {
   parseValorBRL,
   type EntradasViabilidade,
   simulacaoFromJSON,
+  vereditoDadosCompletosParaSemaforo,
 } from "@/lib/viabilidade";
 import { AlertasDecisao } from "./AlertasDecisao";
 import { AlertasHistoricoVeiculo } from "./AlertasHistoricoVeiculo";
-import {
-  BlocoDecisaoMercadoPendente,
-  BlocoDecisaoPrincipal,
-} from "./BlocoDecisao";
+import { BlocoDecisaoMercadoPendente } from "./BlocoDecisao";
+import { CalculationDetailsAccordion } from "./CalculationDetailsAccordion";
 import { CardEstrategiaNegociacao } from "./CardEstrategiaNegociacao";
 import { CardSimulacaoBase } from "./CardSimulacaoBase";
 import {
@@ -53,6 +62,7 @@ import {
 } from "./campos-ui";
 import { DEBOUNCE_MS, PCT_PADRAO } from "./constants";
 import { ConsultasRiscoPremiumSection } from "./ConsultasRiscoPremiumSection";
+import { DecisionCard } from "./DecisionCard";
 import { extrairFlagsHistoricoVeiculo, FATORES_RISCO } from "./historico-veiculo";
 import {
   inferirFipeMercadoAtivoNoHistorico,
@@ -61,7 +71,9 @@ import {
 } from "./motor-viabilidade-ui";
 import { ModalConsultaRiscoPremium } from "./ModalConsultaRiscoPremium";
 import { PainelValoresMercado } from "./PainelValoresMercado";
+import { RefinementPanel } from "./RefinementPanel";
 import { ResumoDecisao } from "./ResumoDecisao";
+import { RiskConversionBlock } from "./RiskConversionBlock";
 import { arredondarReais2Ui } from "./ui-utils";
 
 export function FormularioViabilidade({
@@ -73,6 +85,7 @@ export function FormularioViabilidade({
   creditosPremium,
   planoAtivo,
   onDadosLeilaoAtualizado,
+  relatorioVeiculo = null,
 }: {
   placa: string;
   /** Valor textual da referência de mercado da análise — não é preço absoluto de venda. */
@@ -83,6 +96,8 @@ export function FormularioViabilidade({
   creditosPremium: number;
   planoAtivo: boolean;
   onDadosLeilaoAtualizado?: (dadosLeilao: Record<string, unknown>) => void;
+  /** Metadados do veículo para o bloco exportável em PDF (painel). */
+  relatorioVeiculo?: RelatorioVeiculoMeta | null;
 }) {
   const inicial = simulacaoFromJSON(simulacaoJson);
 
@@ -104,6 +119,9 @@ export function FormularioViabilidade({
   const [documentacaoCentavos, setDocumentacaoCentavos] = useState(() =>
     reaisParaCentavos(inicial?.documentacao)
   );
+  const [multasDebitosCentavos, setMultasDebitosCentavos] = useState(() =>
+    reaisParaCentavos(inicial?.multasDebitosManual)
+  );
   const [outrosCustosCentavos, setOutrosCustosCentavos] = useState(() =>
     reaisParaCentavos(inicial?.outrosCustos)
   );
@@ -119,6 +137,19 @@ export function FormularioViabilidade({
   const [ajusteFipePct, setAjusteFipePct] = useState(
     inicial?.ajusteFipePct ?? 0
   );
+  /** % de impacto sobre a FIPE quando o histórico indica risco (editável). */
+  const [pctImpactoLeilao, setPctImpactoLeilao] = useState(() =>
+    Math.round(FATORES_RISCO.leilao * 100)
+  );
+  const [pctImpactoSinistro, setPctImpactoSinistro] = useState(() =>
+    Math.round(FATORES_RISCO.sinistro * 100)
+  );
+  const [pctImpactoRoubo, setPctImpactoRoubo] = useState(() =>
+    Math.round(FATORES_RISCO.roubo * 100)
+  );
+  const [pctImpactoGravame, setPctImpactoGravame] = useState(() =>
+    Math.round(FATORES_RISCO.gravame * 100)
+  );
   const [formulasNegociacaoVisiveis, setFormulasNegociacaoVisiveis] =
     useState(false);
   /** Só para aviso de UI: consultas continuam clicáveis; resultado mock vem após “Já paguei”. */
@@ -129,12 +160,20 @@ export function FormularioViabilidade({
     () => extrairRiscosCarregadosDeDadosLeilao(dadosLeilaoJson),
     [dadosLeilaoJson]
   );
-  const [modalConsultaRiscoPix, setModalConsultaRiscoPix] = useState<{
-    tipo: TipoConsultaRiscoPremium;
-    precoLabel: string;
-  } | null>(null);
-  const [consultandoRiscoTipo, setConsultandoRiscoTipo] =
-    useState<TipoConsultaRiscoPremium | null>(null);
+  const blindagemAtiva = useMemo(
+    () => blindagemCompletaJaAtiva(dadosLeilaoJson),
+    [dadosLeilaoJson]
+  );
+  const laudoTecnicoRiscos = useMemo(
+    () => extrairLaudoTecnicoParaPdf(dadosLeilaoJson),
+    [dadosLeilaoJson]
+  );
+  const debitosRenainfPdf = useMemo(
+    () => extrairDebitosRenainfParaPdf(dadosLeilaoJson),
+    [dadosLeilaoJson]
+  );
+  const [modalBlindagemAberta, setModalBlindagemAberta] = useState(false);
+  const [consultandoBlindagem, setConsultandoBlindagem] = useState(false);
   const [erroConsultaRisco, setErroConsultaRisco] = useState<string | null>(
     null
   );
@@ -150,6 +189,7 @@ export function FormularioViabilidade({
     reparos: reparosCentavos / 100,
     transporte: transporteCentavos / 100,
     documentacao: documentacaoCentavos / 100,
+    multasDebitosManual: multasDebitosCentavos / 100,
     outrosCustos: outrosCustosCentavos / 100,
     pctLucroDesejado: pctLucro,
     pctGorduraNegociacao: pctGordura,
@@ -174,9 +214,98 @@ export function FormularioViabilidade({
     fipeReferenciaConsulta,
   });
 
-  const resultado = contextoFipeMercadoAtivo
-    ? calcularViabilidade(entradas, fipeReferenciaTexto)
+  const fipeReferenciaReais = contextoFipeMercadoAtivo
+    ? fipeReferenciaConsulta
+    : NaN;
+
+  const flagsHistorico = mergeFlagsComConsultasPremium(
+    extrairFlagsHistoricoVeiculo(dadosLeilaoSemConsultasPremium(dadosLeilaoJson)),
+    riscosCarregados
+  );
+  const temRiscoEstrutural =
+    flagsHistorico.leilao ||
+    flagsHistorico.sinistro ||
+    flagsHistorico.roubo ||
+    flagsHistorico.gravame;
+
+  const impactoTotalBruto =
+    (flagsHistorico.leilao ? pctImpactoLeilao / 100 : 0) +
+    (flagsHistorico.sinistro ? pctImpactoSinistro / 100 : 0) +
+    (flagsHistorico.roubo ? pctImpactoRoubo / 100 : 0) +
+    (flagsHistorico.gravame ? pctImpactoGravame / 100 : 0) +
+    (flagsHistorico.renainf ? FATORES_RISCO.renainf : 0);
+
+  const impactoTotal = Math.max(-0.5, impactoTotalBruto);
+
+  const fipeValidaParaAjuste =
+    Number.isFinite(fipeReferenciaReais) && fipeReferenciaReais > 0;
+  const ajusteFipePctClamped = Math.max(
+    AJUSTE_FIPE_PCT_MIN,
+    Math.min(
+      AJUSTE_FIPE_PCT_MAX,
+      Number.isFinite(ajusteFipePct) ? ajusteFipePct : 0
+    )
+  );
+  const ajusteFipeDecimal = ajusteFipePctClamped / 100;
+  const ajusteTotalMercadoUi = ajusteFipeDecimal + impactoTotal;
+
+  const vendaRealistaBruta = fipeValidaParaAjuste
+    ? Math.max(0, fipeReferenciaReais * (1 + ajusteTotalMercadoUi))
+    : simBase.precoVendaSugerido;
+
+  /** MIN(venda esperada, FIPE ajustada por risco) quando o contexto FIPE está ativo. */
+  const baseVendaDecisaoRaw =
+    contextoFipeMercadoAtivo && fipeValidaParaAjuste
+      ? precoVendaEsperadoReais > 0
+        ? Math.min(precoVendaEsperadoReais, vendaRealistaBruta)
+        : vendaRealistaBruta
+      : vendaRealistaBruta;
+
+  const resultadoBruto = contextoFipeMercadoAtivo
+    ? calcularViabilidade(entradas, fipeReferenciaTexto, {
+        vendaRealistaReais: baseVendaDecisaoRaw,
+      })
     : resultadoSemContextoFipeMercado(entradas);
+
+  const resultado = resultadoBruto;
+
+  const baseVendaDecisao = arredondarReais2Ui(Math.max(0, baseVendaDecisaoRaw));
+
+  const omRes = resultado.ofertaMaximaSugerida;
+  const oiRes = resultado.ofertaInicialAncoragem;
+  let ofertaMaximaExibicao = omRes;
+  let ofertaInicialExibicao = oiRes;
+  if (
+    contextoFipeMercadoAtivo &&
+    omRes !== null &&
+    baseVendaDecisao > 0 &&
+    omRes > baseVendaDecisao
+  ) {
+    ofertaMaximaExibicao = baseVendaDecisao;
+    if (oiRes !== null && omRes > 0) {
+      ofertaInicialExibicao = arredondarReais2Ui(
+        Math.max(0, (oiRes * baseVendaDecisao) / omRes)
+      );
+    }
+  }
+
+  const fipeSoManualApenasMercado = fipeValidaParaAjuste
+    ? fipeReferenciaReais * (1 + ajusteFipeDecimal)
+    : 0;
+  const perdaHistoricoReais =
+    blindagemAtiva && fipeValidaParaAjuste
+      ? arredondarReais2Ui(
+          Math.max(0, fipeSoManualApenasMercado - vendaRealistaBruta)
+        )
+      : 0;
+
+  const vendaFipeAjustadaArredondada = arredondarReais2Ui(
+    Math.max(0, vendaRealistaBruta)
+  );
+
+  const estimativaPerdaIndicativaReais = fipeValidaParaAjuste
+    ? Math.max(0, Math.round(fipeReferenciaReais * 0.18))
+    : 0;
 
   const primeiraExecucao = useRef(true);
   useEffect(() => {
@@ -196,10 +325,14 @@ export function FormularioViabilidade({
         reparos: reparosCentavos / 100,
         transporte: transporteCentavos / 100,
         documentacao: documentacaoCentavos / 100,
+        multasDebitosManual: multasDebitosCentavos / 100,
         outrosCustos: outrosCustosCentavos / 100,
         pctLucroDesejado: pctLucro,
         pctGorduraNegociacao: pctGordura,
         ajusteFipePct,
+        vendaRealistaReais: contextoFipeMercadoAtivo
+          ? baseVendaDecisao
+          : null,
       });
     }, DEBOUNCE_MS);
     return () => window.clearTimeout(t);
@@ -211,81 +344,61 @@ export function FormularioViabilidade({
     reparosCentavos,
     transporteCentavos,
     documentacaoCentavos,
+    multasDebitosCentavos,
     outrosCustosCentavos,
     pctLucro,
     pctGordura,
     ajusteFipePct,
     contextoFipeMercadoAtivo,
+    baseVendaDecisao,
     planoAtivo,
     identificadorCliente,
   ]);
 
   useEffect(() => {
-    if (!modalConsultaRiscoPix) return;
+    if (!modalBlindagemAberta) return;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setModalConsultaRiscoPix(null);
+      if (e.key === "Escape") setModalBlindagemAberta(false);
     };
     window.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prevOverflow;
       window.removeEventListener("keydown", onKey);
     };
-  }, [modalConsultaRiscoPix]);
+  }, [modalBlindagemAberta]);
 
-  const { veredito } = resultado;
-  const meta = rotulosVeredito[veredito];
-  const fipeReferenciaReais = contextoFipeMercadoAtivo
-    ? fipeReferenciaConsulta
-    : NaN;
+  const semaforoCompleto = vereditoDadosCompletosParaSemaforo(entradas, {
+    contextoFipeMercadoAtivo,
+    vendaRealistaReais: baseVendaDecisaoRaw,
+  });
+  const vereditoUi = semaforoCompleto ? resultado.veredito : "indefinido";
+  const metaUi = rotulosVeredito[vereditoUi];
+
+  const custosOperacionaisZerados =
+    reparosCentavos === 0 &&
+    transporteCentavos === 0 &&
+    documentacaoCentavos === 0 &&
+    multasDebitosCentavos === 0 &&
+    outrosCustosCentavos === 0;
+
+  const riscoEstruturalLeilaoOuSinistro =
+    blindagemAtiva &&
+    contextoFipeMercadoAtivo &&
+    (flagsHistorico.leilao || flagsHistorico.sinistro);
+
+  const margemFinanceiraAguardandoCustos =
+    blindagemAtiva &&
+    contextoFipeMercadoAtivo &&
+    custosOperacionaisZerados;
 
   const temNegociacao =
-    resultado.ofertaMaximaSugerida !== null &&
-    resultado.ofertaInicialAncoragem !== null;
+    ofertaMaximaExibicao !== null && ofertaInicialExibicao !== null;
 
   const lucroElevado = isLucroDesejadoElevado(pctLucro);
 
-  const flagsHistorico = mergeFlagsComConsultasPremium(
-    extrairFlagsHistoricoVeiculo(dadosLeilaoSemConsultasPremium(dadosLeilaoJson)),
-    riscosCarregados
-  );
-  const temRiscoEstrutural =
-    flagsHistorico.leilao ||
-    flagsHistorico.sinistro ||
-    flagsHistorico.roubo ||
-    flagsHistorico.gravame;
-
-  const impactoTotalBruto =
-    (flagsHistorico.leilao ? FATORES_RISCO.leilao : 0) +
-    (flagsHistorico.sinistro ? FATORES_RISCO.sinistro : 0) +
-    (flagsHistorico.roubo ? FATORES_RISCO.roubo : 0) +
-    (flagsHistorico.gravame ? FATORES_RISCO.gravame : 0);
-
-  const impactoTotal = Math.max(-0.5, impactoTotalBruto);
-
-  const fipeValidaParaAjuste =
-    Number.isFinite(fipeReferenciaReais) && fipeReferenciaReais > 0;
-  const ajusteFipePctClamped = Math.max(
-    AJUSTE_FIPE_PCT_MIN,
-    Math.min(
-      AJUSTE_FIPE_PCT_MAX,
-      Number.isFinite(ajusteFipePct) ? ajusteFipePct : 0
-    )
-  );
-  const ajusteFipeDecimal = ajusteFipePctClamped / 100;
-  const ajusteTotalMercadoUi = ajusteFipeDecimal + impactoTotal;
-
-  const vendaRealista = fipeValidaParaAjuste
-    ? Math.max(0, fipeReferenciaReais * (1 + ajusteTotalMercadoUi))
-    : resultado.precoVendaSugerido;
-
-  const baseVenda = Math.max(0, arredondarReais2Ui(vendaRealista));
-
-  const vendaUltrapassaFipe =
-    Number.isFinite(fipeReferenciaReais) &&
-    fipeReferenciaReais > 0 &&
-    baseVenda > fipeReferenciaReais;
+  const baseVenda = baseVendaDecisao;
 
   const vendaAbaixoDaFipe =
     Number.isFinite(fipeReferenciaReais) &&
@@ -312,7 +425,7 @@ export function FormularioViabilidade({
       : baseVenda - resultado.custoTotal;
 
   const precoPedidoReais = precoPedidoCentavos / 100;
-  const ofertaMaximaNum = resultado.ofertaMaximaSugerida ?? 0;
+  const ofertaMaximaNum = ofertaMaximaExibicao ?? 0;
   const deltaNegociacao = precoPedidoReais - ofertaMaximaNum;
   const diferencaParaTeto = deltaNegociacao;
   const acimaDoTeto = deltaNegociacao > 0;
@@ -324,10 +437,11 @@ export function FormularioViabilidade({
     reparosCentavos / 100 +
     transporteCentavos / 100 +
     documentacaoCentavos / 100 +
+    multasDebitosCentavos / 100 +
     outrosCustosCentavos / 100;
   const lucroIdealSimulado =
-    resultado.ofertaMaximaSugerida !== null
-      ? baseVenda - (resultado.ofertaMaximaSugerida + custosFixosReais)
+    ofertaMaximaExibicao !== null
+      ? baseVenda - (ofertaMaximaExibicao + custosFixosReais)
       : null;
 
   const margemRealMercadoVsFipePct =
@@ -352,7 +466,7 @@ export function FormularioViabilidade({
     (exibirLinhasLucroCenario && prejuizoPessimista) ||
     pedidoAcimaDoTetoSeguro;
 
-  const tetoVisual = resultado.ofertaMaximaSugerida;
+  const tetoVisual = ofertaMaximaExibicao;
   const maxBarRef =
     tetoVisual !== null && Number.isFinite(tetoVisual)
       ? Math.max(precoPedidoReais, tetoVisual, 1)
@@ -403,21 +517,51 @@ export function FormularioViabilidade({
             </h3>
             <p className="text-xs text-slate-600">
               {contextoFipeMercadoAtivo
-                ? "Custos operacionais definem o teto seguro · compare com o preço pedido pelo vendedor"
+                ? "Decisão em destaque · refine custos abaixo · detalhes técnicos no final"
                 : fipeDisponivelNaConsulta
-                  ? "Simule custos e lucro; inclua a referência de mercado na decisão quando quiser ver teto e veredito."
-                  : "Simule custos e lucro; quando a referência vier na análise, inclua na decisão para ver teto, ofertas e veredito."}
+                  ? "Refine custos e meta; inclua a referência de mercado na decisão para ver veredito e limite sugerido."
+                  : "Refine custos e meta; quando a referência vier na análise, inclua na decisão para ver limite e ofertas."}
             </p>
           </div>
         </div>
       </div>
 
-      <AlertasHistoricoVeiculo
-        temRiscoEstrutural={temRiscoEstrutural}
-        impactoTotal={impactoTotal}
-      />
+      {!fipeDisponivelNaConsulta ? <BlocoDecisaoMercadoPendente /> : null}
 
-      <div className="flex min-w-0 flex-col gap-4">
+      {fipeDisponivelNaConsulta && contextoFipeMercadoAtivo ? (
+        <>
+          <DecisionCard
+            contextoAtivo={contextoFipeMercadoAtivo}
+            blindagemAtiva={blindagemAtiva}
+            vereditoUi={vereditoUi}
+            semaforoCompleto={semaforoCompleto}
+            riscoEstruturalLeilaoOuSinistro={riscoEstruturalLeilaoOuSinistro}
+            margemFinanceiraAguardandoCustos={margemFinanceiraAguardandoCustos}
+            lucroEstimadoReais={
+              semaforoCompleto ? resultado.lucroProjetadoMargem : null
+            }
+            margemPct={
+              semaforoCompleto ? resultado.margemRealProjecaoPct : null
+            }
+            tetoNegociacaoReais={temNegociacao ? ofertaMaximaExibicao : null}
+            baseVendaExibida={baseVenda}
+            perdaHistoricoReais={perdaHistoricoReais}
+          />
+          <RiskConversionBlock
+            contextoAtivo={contextoFipeMercadoAtivo}
+            blindagemAtiva={blindagemAtiva}
+            estimativaPerdaIndicativaReais={estimativaPerdaIndicativaReais}
+            podeAtivarPorSaldo={sandboxPremiumAviso || creditosPremium > 0}
+            consultandoBlindagem={consultandoBlindagem}
+            onAbrirModalBlindagem={() => {
+              setErroConsultaRisco(null);
+              setModalBlindagemAberta(true);
+            }}
+          />
+        </>
+      ) : null}
+
+      <RefinementPanel>
         <CampoMonetarioMascarado
           id="reparos"
           label="Reparos / peças"
@@ -441,6 +585,14 @@ export function FormularioViabilidade({
           valueCentavos={documentacaoCentavos}
           onChangeCentavos={setDocumentacaoCentavos}
           icon={FileText}
+        />
+        <CampoMonetarioMascarado
+          id="multas-debitos-manual"
+          label="Multas e débitos (manual)"
+          legenda="Informe o total estimado (ex.: multas Renainf, taxas extras). Esse valor entra no limite sugerido (não pague mais que) e na margem — não dispara consultas automáticas."
+          valueCentavos={multasDebitosCentavos}
+          onChangeCentavos={setMultasDebitosCentavos}
+          icon={Gavel}
         />
         <CampoMonetarioMascarado
           id="outros-custos"
@@ -477,16 +629,68 @@ export function FormularioViabilidade({
           </div>
         ) : null}
 
+        <CampoPercentualEditavel
+          id="pct-lucro"
+          label="Margem desejada — lucro (%)"
+          legenda="Com preço de venda esperado preenchido: lucro desejado sobre o investimento total (compra do veículo + custos operacionais). Sem venda esperada: lucro só sobre os custos operacionais (modo custo + margem)."
+          hint={`Padrão sugerido: ${PCT_PADRAO}%`}
+          valueNum={pctLucro}
+          onCommit={setPctLucro}
+          max={500}
+          testId="viabilidade-pct-lucro"
+          icon={Percent}
+        />
+
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ring-slate-100 sm:p-5">
+          <CampoMonetarioMascarado
+            id="preco-pedido"
+            label="Preço pedido pelo vendedor"
+            legenda="O que o vendedor está pedindo — não entra no custo total nem no limite sugerido; serve para comparar com o valor acima da decisão."
+            valueCentavos={precoPedidoCentavos}
+            onChangeCentavos={setPrecoPedidoCentavos}
+            icon={Banknote}
+          />
+        </div>
+      </RefinementPanel>
+
+      {!contextoFipeMercadoAtivo ? (
+        <CardSimulacaoBase
+          simBase={simBase}
+          pctLucro={pctLucro}
+          fipeDisponivelNaConsulta={fipeDisponivelNaConsulta}
+          onIncluirFipeMercado={() => setFipeCarregada(true)}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setFipeCarregada(false)}
+          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-center text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+          data-testid="btn-voltar-simulacao-base"
+        >
+          Voltar à simulação só com custos (ocultar FIPE da decisão)
+        </button>
+      )}
+
+      <AlertasDecisao
+        alertaPrejuizoCombinado={alertaPrejuizoCombinado}
+        pedidoAcimaDoTetoSeguro={pedidoAcimaDoTetoSeguro}
+        prejuizoPessimista={prejuizoPessimista}
+        diferencaParaTeto={diferencaParaTeto}
+        lucroElevado={lucroElevado}
+        vendaAbaixoDaFipe={vendaAbaixoDaFipe}
+      />
+
+      <CalculationDetailsAccordion>
         <details
           className="group min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-100 open:border-indigo-200/90 open:ring-indigo-100 [&_summary::-webkit-details-marker]:hidden"
           data-testid="details-ajustar-estrategia"
         >
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-left">
             <span className="text-sm font-semibold text-slate-800">
-              Ajustar estratégia
+              Ajustar referência FIPE e riscos (avançado)
             </span>
             <span className="flex items-center gap-2 text-xs text-slate-500">
-              FIPE, lucro e gordura
+              FIPE, gordura e impactos %
               <ChevronDown
                 className="size-5 shrink-0 text-slate-400 transition duration-200 group-open:rotate-180"
                 strokeWidth={2}
@@ -509,21 +713,10 @@ export function FormularioViabilidade({
               esconderZeroNaExibicao={false}
             />
             <CampoPercentualEditavel
-              id="pct-lucro"
-              label="Lucro desejado (%)"
-              legenda="Com preço de venda esperado preenchido: lucro desejado sobre o investimento total (compra do veículo + custos operacionais). Sem venda esperada: lucro só sobre os custos operacionais (modo custo + margem)."
-              hint={`Padrão sugerido: ${PCT_PADRAO}%`}
-              valueNum={pctLucro}
-              onCommit={setPctLucro}
-              max={500}
-              testId="viabilidade-pct-lucro"
-              icon={Percent}
-            />
-            <CampoPercentualEditavel
               id="pct-gordura-negociacao"
               label="Gordura para negociação"
               legenda="Margem para baixar o preço sem comprometer sua meta de lucro."
-              hint={`Padrão sugerido: ${GORDURA_NEGOCIACAO_PADRAO}% · aplicado entre o teto e a oferta inicial`}
+              hint={`Padrão sugerido: ${GORDURA_NEGOCIACAO_PADRAO}% · aplicado entre o limite sugerido e a oferta inicial`}
               valueNum={pctGordura}
               onCommit={setPctGordura}
               max={100}
@@ -533,139 +726,257 @@ export function FormularioViabilidade({
               iconWrapClassName="rounded-lg bg-violet-50 text-violet-700"
               esconderZeroNaExibicao={false}
             />
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">
+              <p className="text-xs font-bold text-slate-800">
+                Impactos de histórico
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-600">
+                Quando a blindagem indicar risco, estes % reduzem a referência de
+                venda realista (somados ao ajuste sobre FIPE). Padrão do sistema: −20,
+                −15, −10 e −5.
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="block text-[11px] font-medium text-slate-700">
+                  Leilão (%)
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={-100}
+                    max={0}
+                    step={1}
+                    value={Number.isFinite(pctImpactoLeilao) ? pctImpactoLeilao : -20}
+                    onChange={(e) => {
+                      const n = parseInt(e.target.value, 10);
+                      setPctImpactoLeilao(
+                        Number.isFinite(n)
+                          ? Math.max(-100, Math.min(0, n))
+                          : -20
+                      );
+                    }}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm tabular-nums text-slate-900 shadow-sm"
+                    data-testid="impacto-historico-leilao"
+                  />
+                </label>
+                <label className="block text-[11px] font-medium text-slate-700">
+                  Sinistro (%)
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={-100}
+                    max={0}
+                    step={1}
+                    value={
+                      Number.isFinite(pctImpactoSinistro)
+                        ? pctImpactoSinistro
+                        : -15
+                    }
+                    onChange={(e) => {
+                      const n = parseInt(e.target.value, 10);
+                      setPctImpactoSinistro(
+                        Number.isFinite(n)
+                          ? Math.max(-100, Math.min(0, n))
+                          : -15
+                      );
+                    }}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm tabular-nums text-slate-900 shadow-sm"
+                    data-testid="impacto-historico-sinistro"
+                  />
+                </label>
+                <label className="block text-[11px] font-medium text-slate-700">
+                  Roubo / furto (%)
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={-100}
+                    max={0}
+                    step={1}
+                    value={
+                      Number.isFinite(pctImpactoRoubo) ? pctImpactoRoubo : -10
+                    }
+                    onChange={(e) => {
+                      const n = parseInt(e.target.value, 10);
+                      setPctImpactoRoubo(
+                        Number.isFinite(n)
+                          ? Math.max(-100, Math.min(0, n))
+                          : -10
+                      );
+                    }}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm tabular-nums text-slate-900 shadow-sm"
+                    data-testid="impacto-historico-roubo"
+                  />
+                </label>
+                <label className="block text-[11px] font-medium text-slate-700">
+                  Gravame (%)
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={-100}
+                    max={0}
+                    step={1}
+                    value={
+                      Number.isFinite(pctImpactoGravame)
+                        ? pctImpactoGravame
+                        : -5
+                    }
+                    onChange={(e) => {
+                      const n = parseInt(e.target.value, 10);
+                      setPctImpactoGravame(
+                        Number.isFinite(n)
+                          ? Math.max(-100, Math.min(0, n))
+                          : -5
+                      );
+                    }}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm tabular-nums text-slate-900 shadow-sm"
+                    data-testid="impacto-historico-gravame"
+                  />
+                </label>
+              </div>
+            </div>
           </div>
         </details>
 
-        {!contextoFipeMercadoAtivo ? (
-          <CardSimulacaoBase
-            simBase={simBase}
-            pctLucro={pctLucro}
-            fipeDisponivelNaConsulta={fipeDisponivelNaConsulta}
-            onIncluirFipeMercado={() => setFipeCarregada(true)}
+        {contextoFipeMercadoAtivo &&
+        temRiscoEstrutural &&
+        vendaAbaixoDaFipe ? (
+          <AlertasHistoricoVeiculo
+            exibirLegendaMercadoReduzido
+            impactoTotal={impactoTotal}
           />
-        ) : (
-          <button
-            type="button"
-            onClick={() => setFipeCarregada(false)}
-            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-center text-xs font-medium text-slate-600 transition hover:bg-slate-50"
-            data-testid="btn-voltar-simulacao-base"
-          >
-            Voltar à simulação só com custos (ocultar FIPE da decisão)
-          </button>
-        )}
-      </div>
+        ) : null}
 
-      {!fipeDisponivelNaConsulta ? (
-        <BlocoDecisaoMercadoPendente />
-      ) : (
-        <BlocoDecisaoPrincipal
+        <ResumoDecisao
+          exibirBlocoResumo={exibirBlocoResumo}
+          resumoComRiscoVisual={resumoComRiscoVisual}
+          fipeCarregada={contextoFipeMercadoAtivo}
+          fipeValidaParaAjuste={fipeValidaParaAjuste}
+          fipeReferenciaReais={fipeReferenciaReais}
+          baseVenda={baseVenda}
+          exibirComparativoNegociacao={exibirComparativoNegociacao}
+          ofertaMaximaNum={ofertaMaximaNum}
+          pctBarTeto={pctBarTeto}
+          pctBarPedido={pctBarPedido}
+          precoPedidoReais={precoPedidoReais}
+          acimaDoTeto={acimaDoTeto}
+          deltaNegociacao={deltaNegociacao}
+          lucroIdealSimulado={lucroIdealSimulado}
+          exibirLinhasLucroCenario={exibirLinhasLucroCenario}
+          prejuizoPessimista={prejuizoPessimista}
+          lucroBase={lucroBase}
+          lucroPessimista={lucroPessimista}
+          temRiscoEstrutural={temRiscoEstrutural}
+          margemPessimistaPct={margemPessimistaPct}
+        />
+
+        <ConsultasRiscoPremiumSection
+          creditosPremium={creditosPremium}
+          riscosCarregados={riscosCarregados}
+          blindagemAtiva={blindagemAtiva}
+          dadosLeilaoJson={dadosLeilaoJson}
+          sandboxPremiumAviso={sandboxPremiumAviso}
+        />
+
+        <AlertasHistoricoVeiculo
+          exibirAlertaBaixaLiquidez={temRiscoEstrutural}
+          impactoTotal={impactoTotal}
+        />
+
+        <CardEstrategiaNegociacao
           temNegociacao={temNegociacao}
-          ofertaMaxima={resultado.ofertaMaximaSugerida}
-          ofertaInicial={resultado.ofertaInicialAncoragem}
-          veredito={veredito}
-          vendaUltrapassaFipe={vendaUltrapassaFipe}
-          meta={meta}
-          aguardandoInclusaoFipeMercado={
-            !fipeCarregada && fipeDisponivelNaConsulta
+          pctLucro={pctLucro}
+          pctGordura={pctGordura}
+          formulasNegociacaoVisiveis={formulasNegociacaoVisiveis}
+          onToggleFormulas={() => setFormulasNegociacaoVisiveis((v) => !v)}
+          fipeDisponivelNaConsulta={fipeDisponivelNaConsulta}
+          fipeCarregada={contextoFipeMercadoAtivo}
+        />
+
+        <PainelValoresMercado
+          temNegociacao={temNegociacao}
+          resultado={resultado}
+          simBase={simBase}
+          fipeCarregada={contextoFipeMercadoAtivo}
+          baseVenda={baseVenda}
+          margemRealMercadoVsFipePct={margemRealMercadoVsFipePct}
+          ofertaMaximaExibicao={ofertaMaximaExibicao}
+          vendaFipeAjustadaReais={
+            fipeValidaParaAjuste && contextoFipeMercadoAtivo
+              ? vendaFipeAjustadaArredondada
+              : null
+          }
+          formulaVendaRealista={
+            fipeValidaParaAjuste && contextoFipeMercadoAtivo
+              ? {
+                  fipeRef: fipeReferenciaReais,
+                  multiplicador: 1 + ajusteTotalMercadoUi,
+                  ajustePct: ajusteFipePctClamped,
+                  impactoRiscoDecimal: impactoTotal,
+                  impactoRiscoBruto: impactoTotalBruto,
+                  resultado: vendaFipeAjustadaArredondada,
+                }
+              : null
           }
         />
-      )}
+      </CalculationDetailsAccordion>
 
-      <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ring-slate-100 sm:p-5">
-        <CampoMonetarioMascarado
-          id="preco-pedido"
-          label="Preço pedido pelo vendedor"
-          legenda="O que o vendedor está pedindo — não entra no custo total nem no teto; serve só para comparar com o limite seguro acima."
-          valueCentavos={precoPedidoCentavos}
-          onChangeCentavos={setPrecoPedidoCentavos}
-          icon={Banknote}
-        />
-      </div>
-
-      <ResumoDecisao
-        exibirBlocoResumo={exibirBlocoResumo}
-        resumoComRiscoVisual={resumoComRiscoVisual}
-        fipeCarregada={contextoFipeMercadoAtivo}
-        fipeValidaParaAjuste={fipeValidaParaAjuste}
-        fipeReferenciaReais={fipeReferenciaReais}
-        baseVenda={baseVenda}
-        exibirComparativoNegociacao={exibirComparativoNegociacao}
-        ofertaMaximaNum={ofertaMaximaNum}
-        pctBarTeto={pctBarTeto}
-        pctBarPedido={pctBarPedido}
-        precoPedidoReais={precoPedidoReais}
-        acimaDoTeto={acimaDoTeto}
-        deltaNegociacao={deltaNegociacao}
-        lucroIdealSimulado={lucroIdealSimulado}
-        exibirLinhasLucroCenario={exibirLinhasLucroCenario}
-        prejuizoPessimista={prejuizoPessimista}
-        lucroBase={lucroBase}
-        lucroPessimista={lucroPessimista}
-        temRiscoEstrutural={temRiscoEstrutural}
-        margemPessimistaPct={margemPessimistaPct}
-      />
-
-      <ConsultasRiscoPremiumSection
-        creditosPremium={creditosPremium}
-        riscosCarregados={riscosCarregados}
-        consultandoRiscoTipo={consultandoRiscoTipo}
-        sandboxPremiumAviso={sandboxPremiumAviso}
-        onAbrirModal={(tipo, precoLabel) => {
-          setErroConsultaRisco(null);
-          setModalConsultaRiscoPix({ tipo, precoLabel });
-        }}
-      />
-
-      <AlertasDecisao
-        alertaPrejuizoCombinado={alertaPrejuizoCombinado}
-        pedidoAcimaDoTetoSeguro={pedidoAcimaDoTetoSeguro}
-        prejuizoPessimista={prejuizoPessimista}
-        diferencaParaTeto={diferencaParaTeto}
-        lucroElevado={lucroElevado}
-        vendaAbaixoDaFipe={vendaAbaixoDaFipe}
-      />
-
-      <CardEstrategiaNegociacao
-        temNegociacao={temNegociacao}
-        pctLucro={pctLucro}
-        pctGordura={pctGordura}
-        formulasNegociacaoVisiveis={formulasNegociacaoVisiveis}
-        onToggleFormulas={() => setFormulasNegociacaoVisiveis((v) => !v)}
-        fipeDisponivelNaConsulta={fipeDisponivelNaConsulta}
-        fipeCarregada={contextoFipeMercadoAtivo}
-      />
-
-      <PainelValoresMercado
-        temNegociacao={temNegociacao}
-        resultado={resultado}
-        simBase={simBase}
-        fipeCarregada={contextoFipeMercadoAtivo}
-        baseVenda={baseVenda}
-        margemRealMercadoVsFipePct={margemRealMercadoVsFipePct}
-        formulaVendaRealista={
-          fipeValidaParaAjuste && contextoFipeMercadoAtivo
-            ? {
-                fipeRef: fipeReferenciaReais,
-                multiplicador: 1 + ajusteTotalMercadoUi,
-                ajustePct: ajusteFipePctClamped,
-                impactoRiscoDecimal: impactoTotal,
-                impactoRiscoBruto: impactoTotalBruto,
-                resultado: baseVenda,
-              }
-            : null
-        }
-      />
+      {relatorioVeiculo ? (
+        <div className="space-y-3 rounded-2xl border border-cyan-200/70 bg-white p-4 shadow-sm ring-1 ring-cyan-100/80">
+          <div className="pdf-exclude flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-slate-900">
+                Relatório para negociação
+              </p>
+              <p className="text-xs text-slate-600">
+                Exporte em PDF para anexar ou apresentar na mesa de negócio.
+              </p>
+            </div>
+            <ExportReportButton fileBaseName={`relatorio-${placa}`} />
+          </div>
+          <RelatorioAnalisePdf
+            placa={placa}
+            fipeTexto={fipeReferenciaTexto}
+            meta={relatorioVeiculo}
+            flagsRisco={flagsHistorico}
+            fipeReferenciaReais={
+              fipeValidaParaAjuste ? fipeReferenciaReais : null
+            }
+            baseVenda={baseVenda}
+            ofertaMaxima={ofertaMaximaExibicao}
+            contextoFipeMercadoAtivo={contextoFipeMercadoAtivo}
+            blindagemAtiva={blindagemAtiva}
+            riscoEstruturalLeilaoOuSinistro={riscoEstruturalLeilaoOuSinistro}
+            margemFinanceiraAguardandoCustos={margemFinanceiraAguardandoCustos}
+            veredito={vereditoUi}
+            subtituloVeredito={metaUi.subtitulo}
+            laudoTecnicoRiscos={laudoTecnicoRiscos}
+            debitosRenainf={debitosRenainfPdf}
+            margemRealProjecaoPct={
+              semaforoCompleto &&
+              (!blindagemAtiva || !margemFinanceiraAguardandoCustos)
+                ? resultado.margemRealProjecaoPct
+                : null
+            }
+            lucroEstimadoReais={
+              semaforoCompleto &&
+              (!blindagemAtiva || !margemFinanceiraAguardandoCustos)
+                ? resultado.lucroProjetadoMargem
+                : null
+            }
+            perdaHistoricoReais={perdaHistoricoReais}
+          />
+        </div>
+      ) : null}
 
       <ModalConsultaRiscoPremium
+        aberto={modalBlindagemAberta}
         placa={placa}
         identificadorCliente={identificadorCliente}
-        modal={modalConsultaRiscoPix}
-        consultandoRiscoTipo={consultandoRiscoTipo}
+        consultando={consultandoBlindagem}
         erroConsultaRisco={erroConsultaRisco}
-        onFechar={() => setModalConsultaRiscoPix(null)}
+        onFechar={() => setModalBlindagemAberta(false)}
         onErro={setErroConsultaRisco}
-        onInicioConsulta={setConsultandoRiscoTipo}
-        onFimConsulta={() => setConsultandoRiscoTipo(null)}
+        onInicioConsulta={() => setConsultandoBlindagem(true)}
+        onFimConsulta={() => setConsultandoBlindagem(false)}
         onDadosLeilaoAtualizado={onDadosLeilaoAtualizado}
       />
       </div>

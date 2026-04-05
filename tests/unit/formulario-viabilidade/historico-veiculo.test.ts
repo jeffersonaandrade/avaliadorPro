@@ -9,6 +9,7 @@ describe("extrairFlagsHistoricoVeiculo", () => {
       sinistro: false,
       roubo: false,
       gravame: false,
+      renainf: false,
     });
   });
 

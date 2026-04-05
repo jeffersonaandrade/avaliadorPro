@@ -20,6 +20,8 @@ export function resultadoSemContextoFipeMercado(
     custoTotal: sim.custoTotal,
     precoVendaSugerido: sim.precoVendaSugerido,
     margemRealSobreFipePct: null,
+    margemRealProjecaoPct: null,
+    lucroProjetadoMargem: null,
     veredito: "indefinido",
     ofertaMaximaSugerida: null,
     ofertaInicialAncoragem: null,
@@ -31,22 +33,20 @@ export const rotulosVeredito: Record<
   { titulo: string; subtitulo: string }
 > = {
   viavel: {
-    titulo: "Compra viável",
-    subtitulo:
-      "Preço de venda sugerido está pelo menos 10% abaixo da FIPE, com folga de custo.",
+    titulo: "Excelente negócio",
+    subtitulo: "Margem de lucro segura.",
   },
   arriscado: {
-    titulo: "Compra arriscada",
-    subtitulo:
-      "Custos operacionais muito próximos da FIPE ou venda sugerida acima do mercado de referência.",
+    titulo: "Não recomendado",
+    subtitulo: "Margem de segurança insuficiente.",
   },
   atencao: {
-    titulo: "Atenção ao preço",
-    subtitulo:
-      "Revise margem: a venda sugerida não atinge 10% abaixo da FIPE com folga confortável.",
+    titulo: "Viável com ressalvas",
+    subtitulo: "Negocie o valor de compra para melhorar a margem.",
   },
   indefinido: {
     titulo: "Veredito indisponível",
-    subtitulo: "Sem valor FIPE válido para comparar o cenário.",
+    subtitulo:
+      "Informe preço de compra, reparos, transporte, documentação, multas e outros custos (e a referência de mercado) para calcular a margem e o semáforo.",
   },
 };

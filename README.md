@@ -229,6 +229,7 @@ Projeto **privado** (`"private": true` no `package.json`). Ajuste esta seção c
 
 ## Suporte / evolução
 
+- **KPI de valor:** cada débito premium bem-sucedido pode registrar **`valor_evitar_perda`** (diferença em R$ entre referência FIPE só com ajuste de mercado e com impacto de risco agregado) na tabela Supabase **`consultas_auditoria_eventos`** (evento `CREDITO_CONSUMIDO`). O painel soma o mês e exibe o banner **“valor protegido este mês”**. Ver [`docs/ESTADO_E_ROADMAP.md`](./docs/ESTADO_E_ROADMAP.md) §7.3.
 - **Panorama do produto, regras de cálculo na tela e backlog sugerido:** [`docs/ESTADO_E_ROADMAP.md`](./docs/ESTADO_E_ROADMAP.md).
 - Integração real de **pagamento PIX** e **consulta premium**: hoje há UI e estado local; substituir o fluxo mock por gateway e API conforme produto.
 - Testes unitários: **`tests/unit/`** (Vitest). E2E (Playwright etc.) pode ser adicionado depois em `tests/e2e/` ou pasta dedicada.

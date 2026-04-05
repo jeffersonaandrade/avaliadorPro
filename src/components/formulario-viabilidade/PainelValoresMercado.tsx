@@ -32,6 +32,10 @@ export type PainelValoresMercadoProps = {
   baseVenda: number;
   margemRealMercadoVsFipePct: number | null;
   formulaVendaRealista?: FormulaVendaRealistaDetalhe | null;
+  /** Teto exibido (pode estar limitado à venda realista de decisão). */
+  ofertaMaximaExibicao?: number | null;
+  /** Referência FIPE × ajustes antes do teto por venda esperada menor. */
+  vendaFipeAjustadaReais?: number | null;
 };
 
 export function PainelValoresMercado({
@@ -42,20 +46,26 @@ export function PainelValoresMercado({
   baseVenda,
   margemRealMercadoVsFipePct,
   formulaVendaRealista = null,
+  ofertaMaximaExibicao = null,
+  vendaFipeAjustadaReais = null,
 }: PainelValoresMercadoProps) {
+  const tetoNegociacaoExibido =
+    ofertaMaximaExibicao !== null && ofertaMaximaExibicao !== undefined
+      ? ofertaMaximaExibicao
+      : resultado.ofertaMaximaSugerida;
   const impactoClampado =
     formulaVendaRealista &&
     formulaVendaRealista.impactoRiscoBruto !==
       formulaVendaRealista.impactoRiscoDecimal;
   return (
     <div className="flex min-w-0 max-w-full flex-col gap-4 overflow-hidden">
-      {temNegociacao && resultado.ofertaMaximaSugerida !== null ? (
+      {temNegociacao && tetoNegociacaoExibido !== null ? (
         <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border-2 border-indigo-400/50 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-md ring-1 ring-indigo-100">
           <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-indigo-700 sm:tracking-widest">
-            Teto de compra (referência rápida)
+            Não pague mais que (referência rápida)
           </p>
           <ValorEmLinha className="mt-2 text-base text-indigo-950 sm:text-lg md:text-xl lg:text-2xl">
-            {formatarMoedaBRL(resultado.ofertaMaximaSugerida)}
+            {formatarMoedaBRL(tetoNegociacaoExibido)}
           </ValorEmLinha>
           <p className="mt-1 text-[11px] leading-snug text-slate-600">
             Mesmo valor do bloco escuro — o dado principal para decidir quanto pode pagar.
@@ -84,6 +94,25 @@ export function PainelValoresMercado({
               ? formatarMoedaBRL(simBase.precoCompraAlvo ?? 0)
               : formatarMoedaBRL(baseVenda)}
         </ValorEmLinha>
+        {fipeCarregada &&
+        vendaFipeAjustadaReais !== null &&
+        Math.abs(vendaFipeAjustadaReais - baseVenda) > 0.009 ? (
+          <p
+            className="mt-2 rounded-lg border border-sky-200/90 bg-sky-50/90 px-3 py-2 text-[11px] leading-relaxed text-sky-950"
+            role="note"
+          >
+            Na decisão usamos o menor entre sua venda esperada e a referência
+            ajustada (
+            <span className="font-mono font-semibold tabular-nums">
+              {formatarMoedaBRL(vendaFipeAjustadaReais)}
+            </span>
+            ) — valor aplicado:{" "}
+            <span className="font-mono font-semibold tabular-nums">
+              {formatarMoedaBRL(baseVenda)}
+            </span>
+            .
+          </p>
+        ) : null}
         <p className="mt-1 text-[11px] leading-snug text-emerald-900/80">
           {fipeCarregada
             ? "Fórmula: valor FIPE da consulta × (1 + ajuste manual em decimal + soma dos impactos de histórico/leilão/sinistro etc., também em decimal). O resultado é arredondado a 2 casas."
@@ -157,7 +186,7 @@ export function PainelValoresMercado({
           </summary>
           <div className="border-t border-slate-200/80 px-4 pb-4 pt-2 text-xs leading-relaxed text-slate-600">
             Calculado no motor como custos operacionais × (1 + lucro desejado). Serve para conferir sua meta interna
-            frente ao teto de compra e à venda realista de mercado.
+            frente ao limite sugerido (não pague mais que) e à venda realista de mercado.
           </div>
         </details>
       ) : null}

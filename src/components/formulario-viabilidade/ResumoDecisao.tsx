@@ -105,8 +105,8 @@ export function ResumoDecisao({
               resumoComRiscoVisual ? "text-red-900/85" : "text-indigo-900/75"
             }`}
           >
-            O foco é o <span className="font-semibold">teto de compra</span> (limite seguro). O pedido do vendedor só
-            entra para medir distância até esse teto.
+            O foco é o <span className="font-semibold">limite seguro de compra</span> (“não pague mais que”). O pedido
+            do vendedor só entra para medir distância até esse teto.
           </p>
 
           <div className="mt-4 space-y-4">
@@ -116,7 +116,7 @@ export function ResumoDecisao({
                   resumoComRiscoVisual ? "text-red-900" : "text-indigo-900"
                 }`}
               >
-                <span>Teto de compra (limite seguro)</span>
+                <span>Não pague mais que (limite seguro)</span>
                 <span className="font-mono text-sm tabular-nums text-slate-900">
                   {formatarMoedaBRL(ofertaMaximaNum)}
                 </span>
@@ -222,7 +222,7 @@ export function ResumoDecisao({
               |
             </span>
             <span className="min-w-0 whitespace-nowrap">
-              Pior cenário: {formatarMoedaBRL(lucroPessimista)}
+              Margem de segurança para imprevistos: {formatarMoedaBRL(lucroPessimista)}
             </span>
           </p>
           <p
