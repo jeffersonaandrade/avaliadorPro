@@ -509,7 +509,7 @@ export function FormularioViabilidade({
 
   return (
     <div
-      className="relative mx-auto min-w-0 max-w-full space-y-6 overflow-hidden rounded-3xl border border-slate-200/90 bg-gradient-to-b from-slate-50/90 to-white p-6 shadow-xl shadow-slate-200/30 sm:max-w-3xl sm:p-8"
+      className="relative mx-auto min-w-0 max-w-full space-y-8 overflow-hidden rounded-3xl border border-slate-200/90 bg-gradient-to-b from-slate-50/90 to-white p-6 shadow-xl shadow-slate-200/30 sm:max-w-3xl sm:space-y-10 sm:p-8"
       data-testid="formulario-viabilidade"
     >
       {!planoAtivo ? (
@@ -556,7 +556,7 @@ export function FormularioViabilidade({
       {!fipeDisponivelNaConsulta ? <BlocoDecisaoMercadoPendente /> : null}
 
       {fipeDisponivelNaConsulta && contextoFipeMercadoAtivo ? (
-        <>
+        <div className="mt-4 space-y-10 sm:space-y-12">
           <DecisionCard
             contextoAtivo={contextoFipeMercadoAtivo}
             blindagemAtiva={blindagemAtiva}
@@ -585,7 +585,7 @@ export function FormularioViabilidade({
               setModalBlindagemAberta(true);
             }}
           />
-        </>
+        </div>
       ) : null}
 
       <RefinementPanel>

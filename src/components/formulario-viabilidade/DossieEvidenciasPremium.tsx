@@ -270,6 +270,23 @@ function BlocoRenainf({ d }: { d: RenainfDossie }) {
                 <span className="font-medium">Local:</span>{" "}
                 {inf.local_infracao || "—"}
               </p>
+              {inf.numero_auto_infracao ? (
+                <p className="mt-1 font-mono text-[11px] text-orange-900/90">
+                  <span className="font-sans font-medium">Auto de infração:</span>{" "}
+                  {inf.numero_auto_infracao}
+                </p>
+              ) : null}
+              {inf.data_hora_infracao ? (
+                <p className="mt-0.5 text-orange-900/85">
+                  <span className="font-medium">Data da infração:</span>{" "}
+                  {inf.data_hora_infracao.trim()}
+                </p>
+              ) : null}
+              {inf.municipio ? (
+                <p className="mt-0.5 text-orange-900/85">
+                  <span className="font-medium">Município:</span> {inf.municipio}
+                </p>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -279,7 +296,15 @@ function BlocoRenainf({ d }: { d: RenainfDossie }) {
 }
 
 function BlocoGravame({ d }: { d: GravameDossie }) {
-  if (!d.agente_financeiro_nome && !d.data_registro && !d.situacao) return null;
+  const cnpj = d.agente_financeiro_cnpj?.trim();
+  if (
+    !d.agente_financeiro_nome &&
+    !cnpj &&
+    !d.data_registro &&
+    !d.situacao
+  ) {
+    return null;
+  }
   return (
     <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
       <SubtituloDossieTecnico />
@@ -292,6 +317,12 @@ function BlocoGravame({ d }: { d: GravameDossie }) {
             <Shield className="size-4 text-slate-500" aria-hidden />
             {d.agente_financeiro_nome || "—"}
           </p>
+          {cnpj ? (
+            <p className="mt-2 font-mono text-[11px] text-slate-700">
+              <span className="font-sans font-medium text-slate-600">CNPJ:</span>{" "}
+              {cnpj}
+            </p>
+          ) : null}
           <p className="mt-2 text-slate-600">
             <span className="font-medium">Data de registro:</span>{" "}
             {d.data_registro || "—"}

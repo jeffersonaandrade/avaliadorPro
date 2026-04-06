@@ -5,9 +5,28 @@ import {
   cachePremiumConsultaFresco,
   corpoRespostaMinimoValido,
   estruturaMinimaPorTipo,
+  isSandboxMocksPremiumEnabled,
   normalizarConsultaPremiumV2,
   TTL_PREMIUM_DIAS,
 } from "@/lib/consultar-placa-premium-v2";
+
+describe("isSandboxMocksPremiumEnabled", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("com API_CONSULTAR_PLACA_TOKEN definido retorna false mesmo com USE_MOCKS true", () => {
+    vi.stubEnv("NEXT_PUBLIC_USE_MOCKS", "true");
+    vi.stubEnv("API_CONSULTAR_PLACA_TOKEN", "secret-token");
+    expect(isSandboxMocksPremiumEnabled()).toBe(false);
+  });
+
+  it("sem token e USE_MOCKS true retorna true", () => {
+    vi.stubEnv("NEXT_PUBLIC_USE_MOCKS", "true");
+    vi.stubEnv("API_CONSULTAR_PLACA_TOKEN", "");
+    expect(isSandboxMocksPremiumEnabled()).toBe(true);
+  });
+});
 
 describe("cachePremiumConsultaFresco", () => {
   afterEach(() => {

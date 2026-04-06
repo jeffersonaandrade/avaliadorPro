@@ -6,6 +6,9 @@
 --   • CREATE TABLE IF NOT EXISTS — não recria tabelas.
 --   • ADD COLUMN IF NOT EXISTS — só acrescenta colunas que faltam.
 --   • CREATE INDEX IF NOT EXISTS — índices idempotentes.
+--   • Políticas RLS: blocos DO $$ … $$ consultam pg_policies e só CREATE POLICY se
+--     o nome ainda não existir na tabela (script seguro para rodar várias vezes).
+--     Requer PostgreSQL 15+ (view pg_policies), padrão em projetos Supabase atuais.
 --
 -- Bases novas: execute do início ao fim uma vez.
 -- Produção: revise RLS (ex.: política anon em consultas_veiculos é só DEV).
@@ -70,12 +73,25 @@ ALTER TABLE public.consultas_veiculos ENABLE ROW LEVEL SECURITY;
 
 -- Exemplo DEV: permite anon ler/escrever (NÃO use em produção sem revisão).
 -- Em produção prefira service_role só no servidor ou políticas por usuário autenticado.
-CREATE POLICY "consultas_veiculos_anon_all_dev"
-  ON public.consultas_veiculos
-  FOR ALL
-  TO anon
-  USING (true)
-  WITH CHECK (true);
+-- TODO PRD: substituir/remover esta policy — checklist em docs/ESTADO_E_ROADMAP.md §8 (RLS consultas_veiculos).
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'consultas_veiculos'
+      AND policyname = 'consultas_veiculos_anon_all_dev'
+  ) THEN
+    CREATE POLICY "consultas_veiculos_anon_all_dev"
+      ON public.consultas_veiculos
+      FOR ALL
+      TO anon
+      USING (true)
+      WITH CHECK (true);
+  END IF;
+END
+$$;
 
 -- Cota diária de resoluções FIPE gratuitas (identificador = UUID no localStorage do navegador).
 -- Sem esta tabela, o backend ignora a cota e permite todas as consultas (fallback em código).

@@ -67,6 +67,8 @@ export type RouboFurtoDossie = {
 
 export type GravameDossie = {
   agente_financeiro_nome: string;
+  /** CNPJ do agente (somente dígitos ou formatado), quando a API retornar. */
+  agente_financeiro_cnpj: string;
   data_registro: string;
   situacao: string;
 };
@@ -76,6 +78,9 @@ export type RenainfInfracao = {
   orgao_autuador: string;
   valor_aplicado: string;
   local_infracao: string;
+  numero_auto_infracao?: string;
+  data_hora_infracao?: string;
+  municipio?: string;
 };
 
 export type RenainfDossie = {
@@ -267,6 +272,12 @@ export function parsearGravameDossie(dados: JsonRecord): GravameDossie | null {
   const agente = rec(reg?.agente_financeiro ?? reg?.agenteFinanceiro);
   return {
     agente_financeiro_nome: str(agente?.nome ?? reg?.agente_financeiro_nome),
+    agente_financeiro_cnpj: str(
+      agente?.cnpj ??
+        agente?.cnpj_agente ??
+        reg?.cnpj_agente ??
+        reg?.cnpj
+    ),
     data_registro: str(reg?.data_registro ?? reg?.dataRegistro),
     situacao: str(reg?.situacao),
   };
@@ -277,18 +288,37 @@ function extrairInfracaoRenainfDeItem(item: unknown): RenainfInfracao | null {
   if (!o) return null;
   const di = rec(o.dados_infracao ?? o.dadosInfracao);
   const src = di ?? o;
-  return {
-    infracao: str(src.infracao ?? o.descricao ?? o.tipo_infracao),
-    orgao_autuador: str(src.orgao_autuador ?? o.orgaoAutuador ?? o.orgao),
-    valor_aplicado: str(src.valor_aplicado ?? o.valorAplicado ?? o.valor),
-    local_infracao: str(
-      src.local_infracao ??
-        o.localInfracao ??
-        o.local ??
-        o.municipio ??
-        src.municipio
-    ),
+  const ev = rec(o.eventos);
+  const infracao = str(src.infracao ?? o.descricao ?? o.tipo_infracao);
+  const orgao_autuador = str(src.orgao_autuador ?? o.orgaoAutuador ?? o.orgao);
+  const valor_aplicado = str(src.valor_aplicado ?? o.valorAplicado ?? o.valor);
+  const local_infracao = str(
+    src.local_infracao ??
+      o.localInfracao ??
+      o.local ??
+      src.municipio ??
+      o.municipio
+  );
+  const numero_auto_infracao = str(
+    src.numero_auto_infracao ?? src.numeroAutoInfracao ?? o.numero_auto
+  );
+  const data_hora_infracao = str(
+    ev?.data_hora_infracao ??
+      ev?.dataHoraInfracao ??
+      src.data_hora_infracao ??
+      o.data_hora_infracao
+  );
+  const municipio = str(src.municipio ?? o.municipio);
+  const out: RenainfInfracao = {
+    infracao,
+    orgao_autuador,
+    valor_aplicado,
+    local_infracao,
   };
+  if (numero_auto_infracao) out.numero_auto_infracao = numero_auto_infracao;
+  if (data_hora_infracao) out.data_hora_infracao = data_hora_infracao;
+  if (municipio) out.municipio = municipio;
+  return out;
 }
 
 /** Busca infrações Renainf em chaves comuns no objeto `dados`. */
@@ -335,7 +365,10 @@ export function parsearRenainfDossie(dados: JsonRecord): RenainfDossie {
         (Boolean(x.infracao) ||
           Boolean(x.orgao_autuador) ||
           Boolean(x.valor_aplicado) ||
-          Boolean(x.local_infracao))
+          Boolean(x.local_infracao) ||
+          Boolean(x.numero_auto_infracao) ||
+          Boolean(x.data_hora_infracao) ||
+          Boolean(x.municipio))
     );
 
   let soma = 0;
@@ -367,7 +400,13 @@ export function extrairDossieConsultaPremium(
         dados.registro_sinistro_com_perda_total ??
           dados.registroSinistroComPerdaTotal
       );
-      const registro = str(rs?.registro);
+      let registro = "";
+      const raw = rs?.registro;
+      if (typeof raw === "string") registro = raw.trim();
+      else if (raw != null && typeof raw === "object" && !Array.isArray(raw)) {
+        const jr = raw as JsonRecord;
+        registro = str(jr.texto ?? jr.descricao ?? jr.resumo ?? jr.mensagem);
+      }
       return { tipo: "sinistro", dados: { registro } };
     }
     case "renainf":
@@ -450,6 +489,9 @@ export function dossieFromStoredBlock(raw: unknown): ConsultaPremiumDossie | nul
       tipo: "gravame",
       dados: {
         agente_financeiro_nome: str(o.agente_financeiro_nome),
+        agente_financeiro_cnpj: str(
+          o.agente_financeiro_cnpj ?? o.cnpj_agente ?? o.cnpj
+        ),
         data_registro: str(o.data_registro),
         situacao: str(o.situacao),
       },
@@ -461,7 +503,17 @@ export function dossieFromStoredBlock(raw: unknown): ConsultaPremiumDossie | nul
   }
   if (k === "sinistro") {
     const pl = rec(o.payload);
-    const registro = str(o.registro ?? pl?.registro);
+    const rawReg = o.registro ?? pl?.registro;
+    let registro = "";
+    if (typeof rawReg === "string") registro = rawReg.trim();
+    else if (
+      rawReg != null &&
+      typeof rawReg === "object" &&
+      !Array.isArray(rawReg)
+    ) {
+      const jr = rawReg as JsonRecord;
+      registro = str(jr.texto ?? jr.descricao ?? jr.resumo ?? jr.mensagem);
+    }
     return { tipo: "sinistro", dados: { registro } };
   }
   return null;
@@ -473,16 +525,8 @@ export function renainfFromStored(raw: unknown): RenainfDossie | null {
   const k = str(o.tipo ?? o.kind);
   if (k !== "renainf") return null;
   const infracoes = arr(o.infracoes).flatMap((r) => {
-    const x = rec(r);
-    if (!x) return [];
-    return [
-      {
-        infracao: str(x.infracao),
-        orgao_autuador: str(x.orgao_autuador),
-        valor_aplicado: str(x.valor_aplicado),
-        local_infracao: str(x.local_infracao),
-      },
-    ];
+    const parsed = extrairInfracaoRenainfDeItem(r);
+    return parsed ? [parsed] : [];
   });
   const vtRaw = o.valor_total_reais;
   let valor_total_reais =
@@ -631,26 +675,49 @@ export function extrairLaudoTecnicoParaPdf(
     const grav = dossieFromStoredBlock(itemGrav?.dossie);
     if (grav?.tipo === "gravame") {
       const g = grav.dados;
+      const cnpj = g.agente_financeiro_cnpj?.trim();
+      const banco = g.agente_financeiro_nome || "—";
       out.gravameLinhas.push(
-        `Agente financeiro: ${g.agente_financeiro_nome || "—"} · Registro: ${g.data_registro || "—"} · Situação: ${g.situacao || "—"}`
+        [
+          cnpj ? `CNPJ: ${cnpj}` : null,
+          `Banco / agente: ${banco}`,
+          g.data_registro ? `Registro: ${g.data_registro}` : null,
+          g.situacao ? `Situação: ${g.situacao}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
       );
     }
     const itemRen = rec(block.renainf);
     const renPremium = dossieFromStoredBlock(itemRen?.dossie);
     if (renPremium?.tipo === "renainf" && renPremium.dados.infracoes.length) {
       for (const i of renPremium.dados.infracoes) {
-        out.renainfLinhas.push(
-          `${i.infracao} — Órgão autuador: ${i.orgao_autuador} — Valor: ${i.valor_aplicado} — Local: ${i.local_infracao}`
-        );
+        const partes = [
+          i.infracao,
+          i.orgao_autuador && `Órgão: ${i.orgao_autuador}`,
+          i.valor_aplicado && `Valor: ${i.valor_aplicado}`,
+          i.local_infracao && `Local: ${i.local_infracao}`,
+          i.numero_auto_infracao && `Auto: ${i.numero_auto_infracao}`,
+          i.data_hora_infracao && `Data infração: ${i.data_hora_infracao}`,
+          i.municipio && `Município: ${i.municipio}`,
+        ].filter(Boolean);
+        out.renainfLinhas.push(partes.join(" · "));
       }
     }
   }
   const ren = renainfFromStored(root.evidencias_renainf);
   if (!out.renainfLinhas.length && ren?.infracoes.length) {
     for (const i of ren.infracoes) {
-      out.renainfLinhas.push(
-        `${i.infracao} — Órgão autuador: ${i.orgao_autuador} — Valor: ${i.valor_aplicado} — Local: ${i.local_infracao}`
-      );
+      const partes = [
+        i.infracao,
+        i.orgao_autuador && `Órgão: ${i.orgao_autuador}`,
+        i.valor_aplicado && `Valor: ${i.valor_aplicado}`,
+        i.local_infracao && `Local: ${i.local_infracao}`,
+        i.numero_auto_infracao && `Auto: ${i.numero_auto_infracao}`,
+        i.data_hora_infracao && `Data infração: ${i.data_hora_infracao}`,
+        i.municipio && `Município: ${i.municipio}`,
+      ].filter(Boolean);
+      out.renainfLinhas.push(partes.join(" · "));
     }
   }
   return out;

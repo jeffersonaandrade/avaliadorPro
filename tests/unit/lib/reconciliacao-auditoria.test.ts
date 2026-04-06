@@ -6,6 +6,7 @@ import {
   agruparEventosEmTransacoes,
   calcularKpisConciliacao,
   creditoConsumidoRoiSuspeito,
+  valorEvitarPerdaParaSoma,
   type LinhaEventoAuditoriaDb,
 } from "@/lib/reconciliacao-auditoria";
 
@@ -141,6 +142,32 @@ describe("agregarPorCliente", () => {
     expect(agg[0]?.creditosConsumidos).toBe(2);
     expect(agg[0]?.somaValorEvitarPerda).toBe(100);
   });
+
+  it("CREDITO_CONSUMIDO com valor_evitar_perda null soma 0 na agregação", () => {
+    const linhas: LinhaEventoAuditoriaDb[] = [
+      linha({ evento: "CREDITO_CONSUMIDO", valor_evitar_perda: null }),
+    ];
+    const agg = agregarPorCliente(linhas);
+    expect(agg[0]?.creditosConsumidos).toBe(1);
+    expect(agg[0]?.somaValorEvitarPerda).toBe(0);
+  });
+});
+
+describe("valorEvitarPerdaParaSoma", () => {
+  it("null e undefined somam como 0", () => {
+    expect(valorEvitarPerdaParaSoma(null)).toBe(0);
+    expect(valorEvitarPerdaParaSoma(undefined)).toBe(0);
+  });
+
+  it("NaN e Infinity viram 0", () => {
+    expect(valorEvitarPerdaParaSoma(Number.NaN)).toBe(0);
+    expect(valorEvitarPerdaParaSoma(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+
+  it("número e string numérica válidos", () => {
+    expect(valorEvitarPerdaParaSoma(12.5)).toBe(12.5);
+    expect(valorEvitarPerdaParaSoma("10,5")).toBe(10.5);
+  });
 });
 
 describe("creditoConsumidoRoiSuspeito", () => {
@@ -182,6 +209,23 @@ describe("creditoConsumidoRoiSuspeito", () => {
 });
 
 describe("acumularResumoRoiCreditoPorLinhas", () => {
+  it("CREDITO_CONSUMIDO com valor_evitar_perda null não quebra e conta como 0", () => {
+    const r = acumularResumoRoiCreditoPorLinhas([
+      {
+        valor_evitar_perda: null,
+        detalhe: "ok",
+        persistencia_falhou_apos_debito: false,
+      },
+      {
+        valor_evitar_perda: 50,
+        detalhe: "ok",
+        persistencia_falhou_apos_debito: false,
+      },
+    ]);
+    expect(r.valor_total_protegido_valido).toBe(50);
+    expect(r.total_consultas_validas).toBe(2);
+  });
+
   it("separa somas e contagens válido vs suspeito", () => {
     const r = acumularResumoRoiCreditoPorLinhas([
       {

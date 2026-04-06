@@ -488,7 +488,7 @@ export function RelatorioAnalisePdf({
               ferramenta; aqui só constam trechos disponíveis.
             </p>
 
-            <div className="mt-4 flex flex-col gap-4">
+            <div className="mt-4 flex flex-col gap-6">
               {laudo.leilaoParagrafos.length > 0 ? (
                 <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-800">
                   <p className="font-bold text-slate-900">Leilão</p>
@@ -587,6 +587,24 @@ export function RelatorioAnalisePdf({
                     <span className="font-medium">Localização:</span>{" "}
                     {inf.local_infracao || "—"}
                   </span>
+                  {inf.numero_auto_infracao ? (
+                    <span className="mt-1 block font-mono text-[11px] text-orange-950/95">
+                      <span className="font-sans font-medium">Auto:</span>{" "}
+                      {inf.numero_auto_infracao}
+                    </span>
+                  ) : null}
+                  {inf.data_hora_infracao ? (
+                    <span className="mt-0.5 block text-orange-900/90">
+                      <span className="font-medium">Data da infração:</span>{" "}
+                      {inf.data_hora_infracao.trim()}
+                    </span>
+                  ) : null}
+                  {inf.municipio ? (
+                    <span className="mt-0.5 block text-orange-900/90">
+                      <span className="font-medium">Município:</span>{" "}
+                      {inf.municipio}
+                    </span>
+                  ) : null}
                 </li>
               ))}
             </ol>

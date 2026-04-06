@@ -47,9 +47,9 @@ SaaS B2B para **consulta por placa** (dados do veículo + referência FIPE), **s
 2. Exige `identificadorCliente` e **`plano_ativo`**.
 3. Se existe linha em **`consultas_veiculos`** para a placa → devolve **cache** (sem novo consumo de API de placa).
 4. Senão:
-   - Se `NEXT_PUBLIC_USE_MOCKS=true` → dados básicos **HB20 sandbox** (sem Consultar Placa).
+   - Se `NEXT_PUBLIC_USE_MOCKS=true` → dados básicos **perfil sandbox** (padrão HB20 em `dadosBasicosSandbox`, sobrescrevível por `AVALIADOR_MOCKS_SANDBOX_*`; sem Consultar Placa).
    - Senão → **Consultar Placa** (API paga).
-5. **Resolução FIPE** (`resolverPrecoFipe`): só se `podeUsarConsultaFipe` (plano + limite mensal). Contador **`consultas_fipe_utilizadas`** incrementa **apenas após match válido**. Se limite estourado → `aviso_fipe` com mensagem de limite; valor FIPE pode ficar `"—"`.
+5. **Resolução FIPE** (`resolverPrecoFipe`): só se `podeUsarConsultaFipe` (plano + limite mensal). Contador **`consultas_fipe_utilizadas`** incrementa **apenas após match válido**. Se limite estourado → `aviso_fipe` com mensagem de limite; valor FIPE pode ficar `"—"`. **Nota (mocks):** a Parallelum **não** recebe placa — só marca/modelo/ano/combustível/tipo. Com `NEXT_PUBLIC_USE_MOCKS=true`, esses campos vêm de **`dadosBasicosSandbox`** (HB20 por padrão; opcional `AVALIADOR_MOCKS_SANDBOX_*`), **não** de `NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO`. Placas sandbox da API Consultar Placa (ex. documentação `AAA0000` ou valor configurado no env) referem-se ao **outro** provedor, não ao contrato FIPE; não faz sentido forçar a mesma placa na FIPE.
 6. **Upsert** em `consultas_veiculos` com `dados_leilao` (metadados + futuro histórico).
 
 **Nota:** o cache base em `buscarVeiculoAction` usa **TTL de 30 dias** com `coalesce(atualizado_em, criado_em)`. Cache expirado refaz API/mock, faz upsert com `atualizado_em`/`criado_em` atuais, **preserva** `dados_leilao.consultas_premium` e `simulacao_viabilidade`. É necessário aplicar no Supabase o `ALTER` de `atualizado_em` em `database.sql` se a coluna ainda não existir.
@@ -68,8 +68,8 @@ SaaS B2B para **consulta por placa** (dados do veículo + referência FIPE), **s
 - Exige análise da placa em `consultas_veiculos`, plano ativo e **`creditos_premium >= 1`** (em modo mock `NEXT_PUBLIC_USE_MOCKS=true` o crédito não é exigido nem debitado).
 - Hit por tipo com **TTL de 7 dias** no fluxo por tipo e no pacote completo (tipos já frescos são pulados no loop da blindagem).
 - Produção: **Consultar Placa v2** (`src/lib/consultar-placa-premium-v2.ts`, `consultas-risco-actions.ts`) — Bearer `API_CONSULTAR_PLACA_TOKEN`. Timeout **8 s** para todas as rotas premium usadas no servidor (inclui Renainf e Leilão Prime, alinhado ao teto Netlify Free). Retry em rede (500 ms). Parsers e dossiê: `src/lib/api-v2/parsers.ts` (`dossie` em `consultas_premium.*`; `evidencias_renainf` espelha o bloco Renainf para legado/PDF). Endpoint Renainf: `/v2/consultarRegistrosInfracoesRenainf`.
-- Placa **`AAA0000`** + mocks: `demo-mocks.ts` (`mockConsultasPremiumBlocoDemo`, Renainf PRF R$ 130,16, leilão classe C / HDI, 3 BOs PR, gravame).
-- `NEXT_PUBLIC_USE_MOCKS=true`: mock rico na placa demo; demais placas seguem mock determinístico simples; **sem débito** de crédito.
+- Placa **`AAA0000`**: placa de teste do provedor Consultar Placa; com **`API_CONSULTAR_PLACA_TOKEN`** definido, as consultas premium chamam a **API v2** e o dossiê/PDF refletem a resposta real (sem JSON mockado no repositório). Sem token e com `NEXT_PUBLIC_USE_MOCKS=true`, premium usa só o mock determinístico leve (`mockConsultarRiscoApiDeterministico`).
+- `NEXT_PUBLIC_USE_MOCKS=true` **e sem** `API_CONSULTAR_PLACA_TOKEN`: premium em mock determinístico (todas as placas); **sem débito** de crédito.
 - Preço por unidade de crédito por plano: `planos-marketing.ts` (`precoCreditoPremiumAvulso`); página **`/creditos`** (autenticada como o painel).
 
 ### 3.5 PIX / histórico premium (UI)
@@ -267,7 +267,10 @@ Priorize conforme negócio; itens não estão ordenados.
 - [ ] **Webhook / job** para sincronizar limites e faturamento.
 - [x] **Testes unitários (Vitest)** em `tests/unit/` — viabilidade, `viabilidade-formulario-calculos`, `validations`, `historico-veiculo`, `consultas-risco-premium`.
 - [ ] **Testes de integração** (actions com Supabase/API mockados) e **E2E** (Playwright) na busca.
-- [ ] **RLS endurecida** em produção; revisar política `anon` em `consultas_veiculos`.
+- [ ] **PRD — RLS em `consultas_veiculos` (bloqueador de segurança):** a política **`consultas_veiculos_anon_all_dev`** (`database.sql`) dá a `anon` leitura/escrita total (`USING/WITH CHECK true`) — **OK só em DEV/MVP**. Antes de produção: **remover ou substituir** por uma destas linhas (definir com produto):
+  - **Recomendado:** sem acesso `anon` direto à tabela; **apenas `service_role`** nas Server Actions (cliente nunca fala com a tabela no browser).
+  - **Alternativa:** `TO authenticated` com `USING` / `WITH CHECK` alinhados ao dono do registro (ex. `auth.uid()` mapeado ao cliente), se o app passar a usar Supabase Auth no cliente para cache.
+  - **Maturidade extra:** políticas diferentes por ambiente (SQL de deploy PROD vs script local DEV), para não depender de “sorte” ao colar `database.sql`.
 - [ ] **Unificar semântica** “margem vs FIPE” vs veredito (documentar na UI se mantiver dois conceitos).
 - [ ] **Observabilidade**: logs estruturados, métricas de uso FIPE/premium.
 - [ ] **Remover ou isolar** `fipe_quota_diaria` se não for mais usada.

@@ -157,8 +157,8 @@ export function DecisionCard({
         ) : null}
       </div>
 
-      <div className="mt-8 grid gap-4 border-t border-slate-200/80 pt-8 sm:grid-cols-2">
-        <div className="rounded-2xl bg-white/90 p-4 text-center shadow-sm ring-1 ring-slate-100">
+      <div className="mt-10 grid gap-5 border-t border-slate-200/80 pt-10 sm:grid-cols-2 sm:gap-6">
+        <div className="rounded-2xl bg-white/90 p-5 text-center shadow-sm ring-1 ring-slate-100">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
             Lucro estimado
           </p>
@@ -170,7 +170,7 @@ export function DecisionCard({
               : "—"}
           </p>
         </div>
-        <div className="rounded-2xl bg-white/90 p-4 text-center shadow-sm ring-1 ring-slate-100">
+        <div className="rounded-2xl bg-white/90 p-5 text-center shadow-sm ring-1 ring-slate-100">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
             Margem (%)
           </p>
@@ -184,7 +184,7 @@ export function DecisionCard({
         </div>
       </div>
 
-      <div className="mt-6 rounded-2xl border border-slate-900 bg-slate-900 p-5 text-center text-white shadow-inner">
+      <div className="mt-9 rounded-2xl border border-slate-900 bg-slate-900 p-6 text-center text-white shadow-inner sm:mt-10">
         <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
           Não pague mais que
         </p>
@@ -203,7 +203,7 @@ export function DecisionCard({
       </div>
 
       {blindagemAtiva && perdaHistoricoReais > 0 ? (
-        <div className="mt-6 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+        <div className="mt-9 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950 sm:mt-10">
           <AlertTriangle className="mt-0.5 size-5 shrink-0" aria-hidden />
           <p>
             <span className="font-bold">Você evitou uma perda de </span>
@@ -221,7 +221,7 @@ export function DecisionCard({
       ) : null}
 
       {blindagemAtiva && perdaHistoricoReais <= 0 ? (
-        <div className="mt-6 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+        <div className="mt-9 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-950 sm:mt-10">
           <ShieldCheck className="mt-0.5 size-5 shrink-0" aria-hidden />
           <p>
             <span className="font-bold">Histórico validado</span>

@@ -46,8 +46,13 @@ export type ResumoRoiConfiabilidade = {
   total_consultas_suspeitas: number;
 };
 
-function numRoi(v: unknown): number {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
+/**
+ * Normaliza `valor_evitar_perda` para somas: `null` / `undefined` / inválido → `0`
+ * (não quebra agregações). Aceita string numérica (ex.: JSON do Supabase).
+ */
+export function valorEvitarPerdaParaSoma(v: unknown): number {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
   if (typeof v === "string" && v.trim()) {
     const n = Number(v.replace(",", "."));
     return Number.isFinite(n) ? n : 0;
@@ -66,7 +71,7 @@ export function acumularResumoRoiCreditoPorLinhas(
   let nValidas = 0;
   let nSuspeitas = 0;
   for (const row of linhas) {
-    const v = numRoi(row.valor_evitar_perda);
+    const v = valorEvitarPerdaParaSoma(row.valor_evitar_perda);
     if (creditoConsumidoRoiSuspeito(row)) {
       valorSuspeito += v;
       nSuspeitas += 1;
@@ -261,11 +266,6 @@ export function rotuloClassificacaoGrupo(c: GrupoTransacao["classificacao"]): st
   }
 }
 
-function numOuZero(v: unknown): number {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  return 0;
-}
-
 /**
  * Agrega por `cliente_id` a partir de linhas já filtradas por período (ex.: últimos 30 dias).
  */
@@ -290,7 +290,7 @@ export function agregarPorCliente(linhas: LinhaEventoAuditoriaDb[]): AgregadoCli
       case "CREDITO_CONSUMIDO":
         a.creditosConsumidos += 1;
         if (!creditoConsumidoRoiSuspeito(e)) {
-          a.somaValorEvitarPerda += numOuZero(e.valor_evitar_perda);
+          a.somaValorEvitarPerda += valorEvitarPerdaParaSoma(e.valor_evitar_perda);
         }
         break;
       case "CONSULTA_SUCESSO":

@@ -31,16 +31,51 @@ function isSandboxMocksEnabled(): boolean {
   );
 }
 
+/** Perfil fixo para FIPE + mocks; sobrescreva com `AVALIADOR_MOCKS_SANDBOX_*` (servidor). */
+const SANDBOX_DADOS_BASICOS_PADRAO = {
+  marca: "HYUNDAI",
+  modelo: "HYUNDAI/HB20 1.0M COMFOR",
+  anoModelo: 2015,
+  chassi: "9AAAA99AAAA999999",
+  cor: "Branca",
+  combustivel: "Álcool / Gasolina",
+  tipoVeiculo: "Automovel",
+} as const;
+
+function parseAnoSandbox(raw: string | undefined): number | null {
+  const t = raw?.trim();
+  if (!t) return null;
+  const n = parseInt(t, 10);
+  const y = new Date().getFullYear();
+  if (!Number.isFinite(n) || n < 1950 || n > y + 1) return null;
+  return n;
+}
+
 function dadosBasicosSandbox(placaNorm: string) {
+  const ano =
+    parseAnoSandbox(process.env.AVALIADOR_MOCKS_SANDBOX_ANO_MODELO) ??
+    SANDBOX_DADOS_BASICOS_PADRAO.anoModelo;
   return {
     placa: placaNorm,
-    marca: "HYUNDAI",
-    modelo: "HYUNDAI/HB20 1.0M COMFOR",
-    anoModelo: 2015,
-    chassi: "9AAAA99AAAA999999",
-    cor: "Branca",
-    combustivel: "Álcool / Gasolina",
-    tipoVeiculo: "Automovel",
+    marca:
+      process.env.AVALIADOR_MOCKS_SANDBOX_MARCA?.trim() ||
+      SANDBOX_DADOS_BASICOS_PADRAO.marca,
+    modelo:
+      process.env.AVALIADOR_MOCKS_SANDBOX_MODELO?.trim() ||
+      SANDBOX_DADOS_BASICOS_PADRAO.modelo,
+    anoModelo: ano,
+    chassi:
+      process.env.AVALIADOR_MOCKS_SANDBOX_CHASSI?.trim() ||
+      SANDBOX_DADOS_BASICOS_PADRAO.chassi,
+    cor:
+      process.env.AVALIADOR_MOCKS_SANDBOX_COR?.trim() ||
+      SANDBOX_DADOS_BASICOS_PADRAO.cor,
+    combustivel:
+      process.env.AVALIADOR_MOCKS_SANDBOX_COMBUSTIVEL?.trim() ||
+      SANDBOX_DADOS_BASICOS_PADRAO.combustivel,
+    tipoVeiculo:
+      process.env.AVALIADOR_MOCKS_SANDBOX_TIPO_VEICULO?.trim() ||
+      SANDBOX_DADOS_BASICOS_PADRAO.tipoVeiculo,
   };
 }
 

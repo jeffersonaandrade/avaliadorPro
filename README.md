@@ -250,13 +250,21 @@ Crie **`.env.local`** na raiz com:
 | `CONSULTAR_PLACA_API_KEY` | Servidor | Sim* | API key Consultar Placa. |
 | `API_CONSULTAR_PLACA_TOKEN` | **Somente servidor** | Sim† | Bearer para endpoints premium v2 (`consultarRegistroLeilaoPrime`, sinistro, roubo/furto, gravame). **Nunca** `NEXT_PUBLIC_`. |
 | `NEXT_PUBLIC_USE_MOCKS` | Build/client | Não | `true` — evita chamada paga à API de placa em dev (dados sandbox). |
+| `NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO` | Build/client | Não | Placa tratada como “demonstração” na UI quando **não** há `NEXT_PUBLIC_USE_MOCKS` (badge, PDF). Padrão `AAA0000` se ausente ou formato inválido. |
+| `AVALIADOR_MOCKS_SANDBOX_MARCA` | Servidor | Não | Com mocks ligados, sobrescreve marca do perfil sandbox (FIPE / `dadosBasicosSandbox`). |
+| `AVALIADOR_MOCKS_SANDBOX_MODELO` | Servidor | Não | Idem — modelo. |
+| `AVALIADOR_MOCKS_SANDBOX_ANO_MODELO` | Servidor | Não | Idem — ano modelo (1950 … ano atual + 1). |
+| `AVALIADOR_MOCKS_SANDBOX_CHASSI` | Servidor | Não | Idem — chassi. |
+| `AVALIADOR_MOCKS_SANDBOX_COR` | Servidor | Não | Idem — cor. |
+| `AVALIADOR_MOCKS_SANDBOX_COMBUSTIVEL` | Servidor | Não | Idem — combustível. |
+| `AVALIADOR_MOCKS_SANDBOX_TIPO_VEICULO` | Servidor | Não | Idem — tipo de veículo (ex. Automovel). |
 | `AVALIADOR_DEV_ACESSO_TOTAL` | Servidor | Não | `true` — **somente local**: ignora tabela `usuario_acesso` e simula plano ativo + limites altos (nunca em produção). |
 | `CRON_SECRET` | Servidor | Para cron | Segredo compartilhado com o agendador (ex.: Vercel Cron); obrigatório para `/api/cron/retencao-auditoria` responder 200. |
 | `RETENCAO_AUDITORIA_ON_STARTUP` | Servidor | Não | `true` — executa `auditoria_retencao_executar` ao iniciar o Node (instrumentation); use com cautela. |
 
 \*Não obrigatórias se `NEXT_PUBLIC_USE_MOCKS=true` para desenvolvimento.
 
-†Obrigatória para **consultas premium reais** em produção. Com `NEXT_PUBLIC_USE_MOCKS=true`, as consultas premium usam mock determinístico e **não** chamam a API (sem débito de crédito).
+†Obrigatória para **consultas premium reais** (API v2 com Bearer). **Sem** esse token e com `NEXT_PUBLIC_USE_MOCKS=true`, premium usa mock determinístico. **Com** token definido, premium chama a API v2 mesmo em modo mocks.
 
 **Auth (Supabase):** no painel do projeto, em Authentication → URL Configuration, inclua **Redirect URLs**: `http://localhost:3000/auth/callback` (e o equivalente em produção). Para **Google OAuth**, ative o provider e defina o Client ID/Secret. O middleware protege `/painel`; login e cadastro redirecionam usuários já autenticados.
 
@@ -276,13 +284,19 @@ CONSULTAR_PLACA_API_KEY=sua_chave
 
 # Opcional em dev:
 # NEXT_PUBLIC_USE_MOCKS=true
+# Placa “demo” na UI (sem mocks): padrão AAA0000 se omitir
+# NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO=AAA0000
+# Perfil FIPE/sandbox (só com mocks): HB20 padrão se omitir
+# AVALIADOR_MOCKS_SANDBOX_MARCA=HYUNDAI
 ```
 
 ---
 
 ## Modo mock (desenvolvimento)
 
-Com `NEXT_PUBLIC_USE_MOCKS=true`, o fluxo usa **dados fixos de sandbox** (ex.: HB20) para **qualquer placa válida** — a chave no banco continua sendo a placa digitada, mas o cenário exibido é o de demonstração. A UI trata todo resultado com `sandboxAtivo` como **veículo de teste** (badge + “Fonte: Sandbox / Simulação”), igual à placa reservada `AAA0000` usada sem a flag só para ensaio pontual. As **consultas premium** também ficam em **mock** sem débito real. A resolução FIPE segue `fipe-resolver` quando há cota. O **middleware** libera `/painel` **sem login**; limites simulados tipo **Premium** **sem gravar** em `usuario_acesso`. Em produção, **não** defina esta flag como `true`.
+Com `NEXT_PUBLIC_USE_MOCKS=true`, o fluxo usa **dados fixos de sandbox** (perfil padrão HB20, sobrescrevível por `AVALIADOR_MOCKS_SANDBOX_*`) para **qualquer placa válida** — a chave no banco continua sendo a placa digitada, mas o cenário exibido é o de demonstração. A UI trata todo resultado com `sandboxAtivo` como **veículo de teste** (badge + “Fonte: Sandbox / Simulação”), no mesmo espírito da placa de demonstração configurável (`NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO`, padrão `AAA0000`) usada **sem** a flag só para ensaio pontual. As **consultas premium** ficam em **mock** só quando **não** há `API_CONSULTAR_PLACA_TOKEN` no servidor; com o token definido, premium chama a **API Consultar Placa v2** mesmo em modo mocks (inclui placa sandbox do provedor com retorno real). A resolução FIPE segue `fipe-resolver` quando há cota. O **middleware** libera `/painel` **sem login**; limites simulados tipo **Premium** **sem gravar** em `usuario_acesso`. Em produção, **não** defina esta flag como `true`.
+
+**FIPE (Parallelum) ≠ placa teste Consultar Placa:** a referência FIPE **não** é consultada por placa. O `fipe-resolver` envia **marca, modelo, ano modelo, combustível e tipo de veículo** à API Parallelum. Com mocks ligados, esses atributos vêm do **perfil sandbox** em `veiculo-actions.ts` (`dadosBasicosSandbox`: HB20 por padrão, opcionalmente via `AVALIADOR_MOCKS_SANDBOX_*`), não de `NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO`. Uma placa sandbox do provedor Consultar Placa (ex. documentação `AAA0000` ou a que você configurar no env) serve aos **endpoints Consultar Placa** (básico / v2); **não** substitui nem alimenta diretamente o contrato da FIPE. O modo teste fixa o **conjunto marca/modelo/ano** (customizável) adequado ao matching FIPE.
 
 Útil para UI, viabilidade e testes sem custo de API.
 

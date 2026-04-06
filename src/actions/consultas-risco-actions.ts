@@ -28,12 +28,7 @@ import {
   renainfDossieParaJson,
   serializarDossieParaPersistencia,
 } from "@/lib/api-v2/parsers";
-import {
-  isDemoPlacaDossieRich,
-  MOCK_DEMO_USER_ID,
-  isPublicDemoMocksMode,
-  mockConsultasPremiumBlocoDemo,
-} from "@/lib/demo-mocks";
+import { MOCK_DEMO_USER_ID, isPublicDemoMocksMode } from "@/lib/demo-mocks";
 import {
   getCustoUnitarioPremiumReais,
   registrarEventoAuditoriaConsulta,
@@ -228,20 +223,16 @@ export async function consultarRiscoPremiumAction(
       const consultadoEm = new Date().toISOString();
 
       if (usarMock) {
-        block[tipoOk] = isDemoPlacaDossieRich(placaNorm)
-          ? mockConsultasPremiumBlocoDemo(tipoOk, consultadoEm)
-          : (() => {
-              const { constatado, resumo } = mockConsultarRiscoApiDeterministico(
-                placaNorm,
-                tipoOk
-              );
-              return {
-                constatado,
-                resumo,
-                consultado_em: consultadoEm,
-                fonte: "api_premium_mock",
-              };
-            })();
+        const { constatado, resumo } = mockConsultarRiscoApiDeterministico(
+          placaNorm,
+          tipoOk
+        );
+        block[tipoOk] = {
+          constatado,
+          resumo,
+          consultado_em: consultadoEm,
+          fonte: "api_premium_mock",
+        };
         const dadosLeilao: Record<string, unknown> = {
           ...prevRoot,
           consultas_premium: block,
@@ -622,20 +613,16 @@ export async function ativarBlindagemCompletaAction(
 
       for (const tipoOk of faltantes) {
         if (usarMock) {
-          block[tipoOk] = isDemoPlacaDossieRich(placaNorm)
-            ? mockConsultasPremiumBlocoDemo(tipoOk, consultadoEm)
-            : (() => {
-                const { constatado, resumo } = mockConsultarRiscoApiDeterministico(
-                  placaNorm,
-                  tipoOk
-                );
-                return {
-                  constatado,
-                  resumo,
-                  consultado_em: consultadoEm,
-                  fonte: "api_premium_mock",
-                };
-              })();
+          const { constatado, resumo } = mockConsultarRiscoApiDeterministico(
+            placaNorm,
+            tipoOk
+          );
+          block[tipoOk] = {
+            constatado,
+            resumo,
+            consultado_em: consultadoEm,
+            fonte: "api_premium_mock",
+          };
           continue;
         }
 

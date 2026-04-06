@@ -42,6 +42,9 @@ export function linhasResumoDossiePremium(
     case "gravame": {
       const d = dossie.dados;
       const out: string[] = [];
+      if (d.agente_financeiro_cnpj?.trim()) {
+        out.push(`CNPJ: ${d.agente_financeiro_cnpj.trim()}`);
+      }
       if (d.agente_financeiro_nome) {
         out.push(`Agente: ${d.agente_financeiro_nome}`);
       }

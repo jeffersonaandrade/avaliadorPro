@@ -318,7 +318,14 @@ export function withBlindagemCompletaDedupe<T>(
   return p;
 }
 
+/**
+ * Mock só para consultas premium quando não há token da API no servidor.
+ * Se `API_CONSULTAR_PLACA_TOKEN` estiver definido, premium **sempre** chama a
+ * Consultar Placa v2 (inclui placa de teste `AAA0000` com resposta real do provedor).
+ */
 export function isSandboxMocksPremiumEnabled(): boolean {
+  const token = String(process.env.API_CONSULTAR_PLACA_TOKEN ?? "").trim();
+  if (token.length > 0) return false;
   return (
     String(process.env.NEXT_PUBLIC_USE_MOCKS ?? "")
       .trim()
