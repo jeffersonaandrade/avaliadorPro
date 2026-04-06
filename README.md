@@ -89,13 +89,96 @@ Integrações externas:
 
 ## Banco de dados (Supabase)
 
-A tabela principal documentada em `database.sql` é `public.consultas_veiculos`, com:
+### Onde está a verdade do schema
 
-- Dados do veículo e FIPE em colunas tipadas.
-- `dados_leilao` (JSONB).
-- `simulacao_viabilidade` (JSONB) — última simulação salva pelo app.
+| Artefato | Função |
+|----------|--------|
+| [`database.sql`](./database.sql) | DDL **idempotente** para criar/atualizar tabelas e colunas (pode colar o arquivo inteiro no SQL Editor mesmo com base já existente). |
+| Esta secção | Inventário do que o **código atual** espera; deve permanecer alinhada ao `database.sql`. |
 
-**Importante:** o app usa **`SUPABASE_SERVICE_ROLE_KEY`** em Server Actions para persistir sem depender de políticas RLS permissivas. Em produção, restrinja a exposição dessa chave ao servidor apenas (nunca `NEXT_PUBLIC_`).
+**Regra de projeto:** ao introduzir tabela ou coluna usada em Server Actions / `supabaseAdmin`, atualize **sempre** `database.sql` **e** esta secção do README (e políticas RLS, se mudarem o modelo de acesso). A regra também está em `.cursor/rules/avaliador-pro-stack.mdc`.
+
+### Uso da `service_role`
+
+O app usa **`SUPABASE_SERVICE_ROLE_KEY`** em Server Actions para persistir sem depender de políticas RLS permissivas. Em produção, restrinja a exposição dessa chave ao servidor apenas (nunca `NEXT_PUBLIC_`).
+
+### Tabelas e colunas (referência)
+
+#### `public.consultas_veiculos`
+
+Cache por placa; usada em `veiculo-actions`, `viabilidade-actions`, `consultas-risco-actions`, reconciliação (leitura).
+
+| Coluna | Tipo | Notas |
+|--------|------|--------|
+| `id` | UUID | PK, default `gen_random_uuid()` |
+| `placa` | TEXT | UNIQUE, normalizada (7 chars, maiúsculas) |
+| `marca`, `modelo`, `ano` | TEXT / INTEGER | Obrigatórios na criação |
+| `fipe` | TEXT | Referência exibida / parseada |
+| `chassi`, `cor`, `combustivel`, `tipo_veiculo` | TEXT | Opcionais |
+| `mes_referencia_fipe`, `aviso_fipe` | TEXT | Metadados FIPE |
+| `dados_leilao` | JSONB | Default `{}`; premium, histórico, etc. |
+| `simulacao_viabilidade` | JSONB | Simulação + veredito; JSON pode incluir `percentualLeilao`, `percentualSinistro`, `percentualRoubo`, `percentualGravame` (ROI alinhado ao audit) |
+| `criado_em` | TIMESTAMPTZ | Default `now()` |
+| `atualizado_em` | TIMESTAMPTZ | Opcional; TTL 30 dias do cache usa `coalesce(atualizado_em, criado_em)` |
+
+#### `public.usuario_acesso`
+
+Plano, cota FIPE mensal e créditos premium; `usuario-acesso.ts`, `provision-usuario-acesso.ts`, auth callback.
+
+| Coluna | Tipo | Notas |
+|--------|------|--------|
+| `identificador` | TEXT | PK — UUID local ou `auth.users.id` |
+| `plano_ativo` | BOOLEAN | Default `false` |
+| `consultas_fipe_utilizadas`, `consultas_fipe_limite` | INTEGER | Cota mensal |
+| `fipe_mes_referencia` | TEXT | `YYYY-MM` UTC; troca de mês zera utilização |
+| `creditos_premium` | INTEGER | Blindagem / consultas premium |
+| `atualizado_em` | TIMESTAMPTZ | Default `now()` |
+
+#### `public.consultas_auditoria_eventos`
+
+Trail de auditoria premium; `consulta-audit-supabase.ts`, reconciliação admin, métricas `valor_evitar_perda`.
+
+| Coluna | Tipo | Notas |
+|--------|------|--------|
+| `id` | UUID | PK |
+| `criado_em` | TIMESTAMPTZ | Default `now()` |
+| `cliente_id` | TEXT | Identificador do cliente |
+| `placa` | TEXT | |
+| `evento` | TEXT | Ex.: `CONSULTA_INICIO`, `CONSULTA_SUCESSO`, `CREDITO_CONSUMIDO`, … |
+| `tipo_consulta`, `detalhe` | TEXT | Opcionais |
+| `valor_evitar_perda` | NUMERIC(14,2) | Opcional; ROI auditável |
+| `tipo_risco_detectado` | TEXT | Opcional |
+| `request_id` | TEXT | Opcional; correlaciona eventos da mesma operação |
+| `persistencia_falhou_apos_debito` | BOOLEAN | Default `false`; em `CREDITO_CONSUMIDO`, `true` classifica ROI como suspeito |
+| `blindagem_persistencia_falhou_apos_debito` | BOOLEAN | Idem para fluxo blindagem |
+
+Índices documentados no `database.sql`: `(cliente_id, criado_em)`, `(placa, criado_em)`, `(request_id)` parcial, `(evento, criado_em)`.
+
+#### `public.metricas_mensais_consolidadas`
+
+Agregação mensal por cliente antes da limpeza de `consultas_auditoria_eventos` (retenção). Preenchida pela função SQL `auditoria_retencao_executar()` (ver `database.sql`). `valor_total_protegido` soma apenas eventos `CREDITO_CONSUMIDO`.
+
+| Coluna | Tipo | Notas |
+|--------|------|--------|
+| `id` | UUID | PK |
+| `cliente_id` | TEXT | |
+| `mes_referencia` | TEXT | `YYYY-MM` (UTC) |
+| `total_consultas` | INTEGER | Contagem `CONSULTA_SUCESSO` no período agregado |
+| `total_creditos` | INTEGER | `CREDITO_CONSUMIDO` |
+| `total_erros` | INTEGER | `CONSULTA_ERRO` |
+| `total_timeouts` | INTEGER | `CONSULTA_TIMEOUT` |
+| `valor_total_protegido` | NUMERIC(14,2) | Soma `valor_evitar_perda` só em `CREDITO_CONSUMIDO` |
+| `created_at`, `updated_at` | TIMESTAMPTZ | |
+
+**Retenção:** após aplicar o DDL, agende `GET` ou `POST` em `/api/cron/retencao-auditoria` com `Authorization: Bearer <CRON_SECRET>` (diário). O arquivo [`vercel.json`](./vercel.json) inclui exemplo de cron às 05:00 UTC. Opcional: `RETENCAO_AUDITORIA_ON_STARTUP=true` roda uma vez ao subir o servidor (via `instrumentation.ts`).
+
+#### `public.fipe_quota_diaria` (legado)
+
+Definida no `database.sql` para modelo freemium diário. **O código atual em `src/` não referencia esta tabela**; o fluxo ativo usa cota **mensal** em `usuario_acesso`. Pode existir no banco sem impacto; remoção futura é decisão de produto.
+
+### Auth e outros objetos Supabase
+
+Tabelas **`auth.users`** e recursos geridos pelo painel Supabase (Auth) **não** estão no `database.sql` deste repositório; o app consome-as via `@supabase/ssr` conforme a documentação Supabase.
 
 ---
 
@@ -168,6 +251,8 @@ Crie **`.env.local`** na raiz com:
 | `API_CONSULTAR_PLACA_TOKEN` | **Somente servidor** | Sim† | Bearer para endpoints premium v2 (`consultarRegistroLeilaoPrime`, sinistro, roubo/furto, gravame). **Nunca** `NEXT_PUBLIC_`. |
 | `NEXT_PUBLIC_USE_MOCKS` | Build/client | Não | `true` — evita chamada paga à API de placa em dev (dados sandbox). |
 | `AVALIADOR_DEV_ACESSO_TOTAL` | Servidor | Não | `true` — **somente local**: ignora tabela `usuario_acesso` e simula plano ativo + limites altos (nunca em produção). |
+| `CRON_SECRET` | Servidor | Para cron | Segredo compartilhado com o agendador (ex.: Vercel Cron); obrigatório para `/api/cron/retencao-auditoria` responder 200. |
+| `RETENCAO_AUDITORIA_ON_STARTUP` | Servidor | Não | `true` — executa `auditoria_retencao_executar` ao iniciar o Node (instrumentation); use com cautela. |
 
 \*Não obrigatórias se `NEXT_PUBLIC_USE_MOCKS=true` para desenvolvimento.
 
@@ -229,7 +314,7 @@ Projeto **privado** (`"private": true` no `package.json`). Ajuste esta seção c
 
 ## Suporte / evolução
 
-- **KPI de valor:** cada débito premium bem-sucedido pode registrar **`valor_evitar_perda`** (diferença em R$ entre referência FIPE só com ajuste de mercado e com impacto de risco agregado) na tabela Supabase **`consultas_auditoria_eventos`** (evento `CREDITO_CONSUMIDO`). O painel soma o mês e exibe o banner **“valor protegido este mês”**. Ver [`docs/ESTADO_E_ROADMAP.md`](./docs/ESTADO_E_ROADMAP.md) §7.3.
+- **KPI de valor:** cada débito premium bem-sucedido pode registrar **`valor_evitar_perda`** na tabela Supabase **`consultas_auditoria_eventos`** (evento `CREDITO_CONSUMIDO`). O banner **“valor protegido este mês”** soma apenas ROI **confiável** (persistência confirmada); a reconciliação admin mostra também o ROI **em verificação**. Ver [`docs/ESTADO_E_ROADMAP.md`](./docs/ESTADO_E_ROADMAP.md) §7.3.
 - **Panorama do produto, regras de cálculo na tela e backlog sugerido:** [`docs/ESTADO_E_ROADMAP.md`](./docs/ESTADO_E_ROADMAP.md).
 - Integração real de **pagamento PIX** e **consulta premium**: hoje há UI e estado local; substituir o fluxo mock por gateway e API conforme produto.
 - Testes unitários: **`tests/unit/`** (Vitest). E2E (Playwright etc.) pode ser adicionado depois em `tests/e2e/` ou pasta dedicada.

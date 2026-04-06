@@ -1,5 +1,7 @@
 "use server";
 
+import { randomUUID } from "crypto";
+
 import { supabaseAdmin } from "@/lib/supabase";
 import {
   cachePremiumConsultaFresco,
@@ -89,6 +91,11 @@ export type ConsultarRiscoPremiumOk = {
   tipo: TipoConsultaRiscoPremium;
   resultado: ResultadoConsultaRiscoCarregado;
   dadosLeilao: Record<string, unknown>;
+  /**
+   * Igual ao `valor_evitar_perda` em `CREDITO_CONSUMIDO` quando houve débito;
+   * null em cache hit, mock sem débito ou FIPE inválida.
+   */
+  valorEvitarPerdaReais: number | null;
 };
 
 export async function consultarRiscoPremiumAction(
@@ -189,6 +196,7 @@ export async function consultarRiscoPremiumAction(
           tipo: tipoOk,
           resultado,
           dadosLeilao: prevRoot,
+          valorEvitarPerdaReais: null,
         };
       }
     }
@@ -208,12 +216,14 @@ export async function consultarRiscoPremiumAction(
     }
 
     return withPremiumConsultaDedupe(placaNorm, tipoOk, idCliente, async () => {
+      const requestIdOperacao = randomUUID();
       console.info(`[CONSULTA_INICIO] tipo=${tipoOk} placa=${placaNorm}`);
       dispararPersistirEventoConsultaAuditoriaDb({
         clienteId: idCliente,
         placa: placaNorm,
         evento: "CONSULTA_INICIO",
         tipoConsulta: tipoOk,
+        requestId: requestIdOperacao,
       });
       const consultadoEm = new Date().toISOString();
 
@@ -263,6 +273,11 @@ export async function consultarRiscoPremiumAction(
           detalhe: `mock tipo=${tipoOk}`,
         });
         const salvoMock = block[tipoOk] as Record<string, unknown>;
+        const valorRoiMock = calcularValorEvitarPerdaReais({
+          fipeTexto: typeof row.fipe === "string" ? row.fipe : "—",
+          dadosLeilao,
+          simulacaoViabilidade: row.simulacao_viabilidade,
+        });
         return {
           sucesso: true,
           tipo: tipoOk,
@@ -275,6 +290,7 @@ export async function consultarRiscoPremiumAction(
                 : String(salvoMock.resumo ?? ""),
           },
           dadosLeilao,
+          valorEvitarPerdaReais: valorRoiMock,
         };
       }
 
@@ -290,6 +306,7 @@ export async function consultarRiscoPremiumAction(
             evento: "CONSULTA_TIMEOUT",
             tipoConsulta: tipoOk,
             detalhe: fetchResult.mensagem,
+            requestId: requestIdOperacao,
           });
         } else {
           dispararPersistirEventoConsultaAuditoriaDb({
@@ -298,6 +315,7 @@ export async function consultarRiscoPremiumAction(
             evento: "CONSULTA_ERRO",
             tipoConsulta: tipoOk,
             detalhe: `${fetchResult.tipoErro}: ${fetchResult.mensagem}`,
+            requestId: requestIdOperacao,
           });
         }
         console.info(
@@ -323,6 +341,7 @@ export async function consultarRiscoPremiumAction(
           evento: "CONSULTA_ERRO",
           tipoConsulta: tipoOk,
           detalhe: "resposta_invalida",
+          requestId: requestIdOperacao,
         });
         return {
           sucesso: false,
@@ -341,6 +360,7 @@ export async function consultarRiscoPremiumAction(
           evento: "CONSULTA_ERRO",
           tipoConsulta: tipoOk,
           detalhe: "estrutura_minima",
+          requestId: requestIdOperacao,
         });
         return {
           sucesso: false,
@@ -419,6 +439,14 @@ export async function consultarRiscoPremiumAction(
         console.info(
           `[CONSULTA_ERRO] tipo=${tipoOk} placa=${placaNorm} motivo=persistencia`
         );
+        dispararPersistirEventoConsultaAuditoriaDb({
+          clienteId: idCliente,
+          placa: placaNorm,
+          evento: "CONSULTA_ERRO",
+          tipoConsulta: tipoOk,
+          detalhe: "persistencia_falhou_apos_debito",
+          requestId: requestIdOperacao,
+        });
         return {
           sucesso: false,
           erro:
@@ -442,6 +470,7 @@ export async function consultarRiscoPremiumAction(
         evento: "CONSULTA_SUCESSO",
         tipoConsulta: tipoOk,
         tipoRiscoDetectado: constatado ? `${tipoOk}_constatado` : `${tipoOk}_limpo`,
+        requestId: requestIdOperacao,
       });
       dispararPersistirEventoConsultaAuditoriaDb({
         clienteId: idCliente,
@@ -451,6 +480,7 @@ export async function consultarRiscoPremiumAction(
         detalhe: "debito_1_credito_pos_api",
         valorEvitarPerda: valorEvitarPerda ?? undefined,
         tipoRiscoDetectado: constatado ? `${tipoOk}_constatado` : `${tipoOk}_limpo`,
+        requestId: requestIdOperacao,
       });
 
       return {
@@ -462,6 +492,7 @@ export async function consultarRiscoPremiumAction(
           resumo,
         },
         dadosLeilao,
+        valorEvitarPerdaReais: valorEvitarPerda,
       };
     });
   } catch (e) {
@@ -476,6 +507,8 @@ export type AtivarBlindagemCompletaResult =
       sucesso: true;
       dadosLeilao: Record<string, unknown>;
       jaEraAtiva: boolean;
+      /** Mesmo valor do `CREDITO_CONSUMIDO` quando houve débito real; senão null. */
+      valorEvitarPerdaReais: number | null;
     }
   | { sucesso: false; erro: string };
 
@@ -509,6 +542,7 @@ export async function ativarBlindagemCompletaAction(
   const placaNorm = parsedPlaca.data;
 
   return withBlindagemCompletaDedupe(placaNorm, idCliente, async () => {
+    const requestIdBlindagem = randomUUID();
     try {
       const { data: row, error: readError } = await supabaseAdmin
         .from("consultas_veiculos")
@@ -542,6 +576,7 @@ export async function ativarBlindagemCompletaAction(
           sucesso: true,
           dadosLeilao: prevRoot,
           jaEraAtiva: true,
+          valorEvitarPerdaReais: null,
         };
       }
 
@@ -554,6 +589,7 @@ export async function ativarBlindagemCompletaAction(
           sucesso: true,
           dadosLeilao: prevRoot,
           jaEraAtiva: true,
+          valorEvitarPerdaReais: null,
         };
       }
 
@@ -578,6 +614,7 @@ export async function ativarBlindagemCompletaAction(
           placa: placaNorm,
           evento: "CONSULTA_INICIO",
           detalhe: `blindagem_completa faltantes=${faltantes.join(",")}`,
+          requestId: requestIdBlindagem,
         });
       }
 
@@ -615,6 +652,7 @@ export async function ativarBlindagemCompletaAction(
               evento: "CONSULTA_TIMEOUT",
               tipoConsulta: tipoOk,
               detalhe: fetchResult.mensagem,
+              requestId: requestIdBlindagem,
             });
           } else {
             dispararPersistirEventoConsultaAuditoriaDb({
@@ -623,6 +661,7 @@ export async function ativarBlindagemCompletaAction(
               evento: "CONSULTA_ERRO",
               tipoConsulta: tipoOk,
               detalhe: `${fetchResult.tipoErro}: ${fetchResult.mensagem}`,
+              requestId: requestIdBlindagem,
             });
           }
           return {
@@ -642,6 +681,7 @@ export async function ativarBlindagemCompletaAction(
             evento: "CONSULTA_ERRO",
             tipoConsulta: tipoOk,
             detalhe: "resposta_invalida_blindagem",
+            requestId: requestIdBlindagem,
           });
           return {
             sucesso: false,
@@ -657,6 +697,7 @@ export async function ativarBlindagemCompletaAction(
             evento: "CONSULTA_ERRO",
             tipoConsulta: tipoOk,
             detalhe: "estrutura_minima_blindagem",
+            requestId: requestIdBlindagem,
           });
           return {
             sucesso: false,
@@ -732,6 +773,13 @@ export async function ativarBlindagemCompletaAction(
           }
         );
         console.error("[blindagem_completa] persistência", writeError);
+        dispararPersistirEventoConsultaAuditoriaDb({
+          clienteId: idCliente,
+          placa: placaNorm,
+          evento: "CONSULTA_ERRO",
+          detalhe: "blindagem_persistencia_falhou_apos_debito",
+          requestId: requestIdBlindagem,
+        });
         return {
           sucesso: false,
           erro:
@@ -756,6 +804,7 @@ export async function ativarBlindagemCompletaAction(
           evento: "CONSULTA_SUCESSO",
           detalhe: `blindagem_completa tipos=${faltantes.join(",")}`,
           tipoRiscoDetectado: tr,
+          requestId: requestIdBlindagem,
         });
         dispararPersistirEventoConsultaAuditoriaDb({
           clienteId: idCliente,
@@ -764,6 +813,7 @@ export async function ativarBlindagemCompletaAction(
           detalhe: "blindagem_completa x1",
           tipoRiscoDetectado: tr,
           valorEvitarPerda: valorEvitarPerdaBlindagem ?? undefined,
+          requestId: requestIdBlindagem,
         });
       } else {
         console.info(`[BLINDAGEM_SUCESSO] placa=${placaNorm} modo=mock sem_debito`);
@@ -781,6 +831,7 @@ export async function ativarBlindagemCompletaAction(
         sucesso: true,
         dadosLeilao,
         jaEraAtiva: false,
+        valorEvitarPerdaReais: valorEvitarPerdaBlindagem,
       };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

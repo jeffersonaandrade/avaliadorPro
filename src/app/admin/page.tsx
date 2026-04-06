@@ -121,12 +121,20 @@ export default async function AdminPage() {
               </span>
             )}
           </div>
-          <Link
-            href="/painel"
-            className="shrink-0 text-xs font-medium text-cyan-300/90 transition hover:text-cyan-200"
-          >
-            ← Voltar ao painel
-          </Link>
+          <div className="flex shrink-0 flex-wrap items-center gap-4">
+            <Link
+              href="/admin/reconciliacao"
+              className="text-xs font-medium text-amber-200/90 transition hover:text-amber-100"
+            >
+              Reconciliação financeira
+            </Link>
+            <Link
+              href="/painel"
+              className="text-xs font-medium text-cyan-300/90 transition hover:text-cyan-200"
+            >
+              ← Voltar ao painel
+            </Link>
+          </div>
         </div>
       </div>
 

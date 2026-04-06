@@ -13,6 +13,11 @@ import {
 import { MOCK_DEMO_USER_ID, isPublicDemoMocksMode } from "@/lib/demo-mocks";
 import { carregarUsuarioAcesso } from "@/lib/usuario-acesso";
 import { placaSchema } from "@/lib/validations";
+import {
+  PCT_IMPACTO_RISCO_MAX,
+  PCT_IMPACTO_RISCO_MIN,
+  PCT_IMPACTO_RISCO_PADRAO,
+} from "@/lib/valor-evitar-perda";
 
 export type SalvarSimulacaoInput = EntradasViabilidade & {
   placa: string;
@@ -22,7 +27,25 @@ export type SalvarSimulacaoInput = EntradasViabilidade & {
   incluirContextoFipeMercado?: boolean;
   /** Venda realista usada no teto (cliente envia para alinhar persistência ao painel). */
   vendaRealistaReais?: number | null;
+  /** % impacto FIPE (UI); alinha ROI auditável com `calcularValorEvitarPerdaReais`. */
+  percentualLeilao?: number;
+  percentualSinistro?: number;
+  percentualRoubo?: number;
+  percentualGravame?: number;
 };
+
+function pctImpactoOuPadrao(
+  enviado: number | undefined,
+  padraoPctInteiro: number
+): number {
+  if (enviado !== undefined && Number.isFinite(enviado)) {
+    return Math.max(
+      PCT_IMPACTO_RISCO_MIN,
+      Math.min(PCT_IMPACTO_RISCO_MAX, enviado)
+    );
+  }
+  return padraoPctInteiro;
+}
 
 export async function salvarSimulacaoViabilidadeAction(
   input: SalvarSimulacaoInput
@@ -100,6 +123,22 @@ export async function salvarSimulacaoViabilidadeAction(
     ...entradas,
     ...calc,
     atualizadoEm: new Date().toISOString(),
+    percentualLeilao: pctImpactoOuPadrao(
+      input.percentualLeilao,
+      PCT_IMPACTO_RISCO_PADRAO.leilao
+    ),
+    percentualSinistro: pctImpactoOuPadrao(
+      input.percentualSinistro,
+      PCT_IMPACTO_RISCO_PADRAO.sinistro
+    ),
+    percentualRoubo: pctImpactoOuPadrao(
+      input.percentualRoubo,
+      PCT_IMPACTO_RISCO_PADRAO.roubo
+    ),
+    percentualGravame: pctImpactoOuPadrao(
+      input.percentualGravame,
+      PCT_IMPACTO_RISCO_PADRAO.gravame
+    ),
   };
 
   const { error } = await supabaseAdmin

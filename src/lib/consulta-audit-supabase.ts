@@ -1,5 +1,9 @@
 import "server-only";
 
+import {
+  acumularResumoRoiCreditoPorLinhas,
+  type ResumoRoiConfiabilidade,
+} from "@/lib/reconciliacao-auditoria";
 import { supabaseAdmin } from "@/lib/supabase";
 
 export type EventoAuditoriaConsultaNome =
@@ -14,6 +18,21 @@ export type EventoAuditoriaConsultaNome =
  * Persistência opcional em `consultas_auditoria_eventos` (Supabase).
  * Falhas são ignoradas (tabela pode não existir ainda).
  */
+export type LinhaConsultaAuditoriaEventoRow = {
+  id: string;
+  criado_em: string;
+  cliente_id: string;
+  placa: string;
+  evento: string;
+  tipo_consulta: string | null;
+  detalhe: string | null;
+  valor_evitar_perda: number | null;
+  tipo_risco_detectado: string | null;
+  request_id: string | null;
+  persistencia_falhou_apos_debito?: boolean | null;
+  blindagem_persistencia_falhou_apos_debito?: boolean | null;
+};
+
 export async function persistirEventoConsultaAuditoriaDb(input: {
   clienteId: string;
   placa: string;
@@ -22,11 +41,23 @@ export async function persistirEventoConsultaAuditoriaDb(input: {
   detalhe?: string | null;
   valorEvitarPerda?: number | null;
   tipoRiscoDetectado?: string | null;
+  /** Correlaciona eventos da mesma operação (reconciliação). */
+  requestId?: string | null;
+  /**
+   * Em `CREDITO_CONSUMIDO`: se true, o ROI entra como “suspeito” nas métricas (persistência após débito não confirmada).
+   */
+  persistenciaFalhouAposDebito?: boolean;
+  blindagemPersistenciaFalhouAposDebito?: boolean;
 }): Promise<void> {
   const cliente_id = (input.clienteId ?? "").trim();
   if (!cliente_id) return;
 
-  const { error } = await supabaseAdmin.from("consultas_auditoria_eventos").insert({
+  const persistFalhou =
+    input.persistenciaFalhouAposDebito === true ? true : false;
+  const blindFalhou =
+    input.blindagemPersistenciaFalhouAposDebito === true ? true : false;
+
+  const baseRow = {
     cliente_id,
     placa: input.placa,
     evento: input.evento,
@@ -34,7 +65,20 @@ export async function persistirEventoConsultaAuditoriaDb(input: {
     detalhe: input.detalhe ?? null,
     valor_evitar_perda: input.valorEvitarPerda ?? null,
     tipo_risco_detectado: input.tipoRiscoDetectado ?? null,
-  });
+    request_id: input.requestId?.trim() || null,
+  };
+
+  /** Colunas exigem DDL em `database.sql`; só em `CREDITO_CONSUMIDO` para não quebrar inserts legados. */
+  const row =
+    input.evento === "CREDITO_CONSUMIDO"
+      ? {
+          ...baseRow,
+          persistencia_falhou_apos_debito: persistFalhou,
+          blindagem_persistencia_falhou_apos_debito: blindFalhou,
+        }
+      : baseRow;
+
+  const { error } = await supabaseAdmin.from("consultas_auditoria_eventos").insert(row);
 
   if (error) {
     console.warn("[consulta_auditoria_db]", error.message);
@@ -47,45 +91,64 @@ export function dispararPersistirEventoConsultaAuditoriaDb(
   void persistirEventoConsultaAuditoriaDb(input);
 }
 
-function numOuZero(v: unknown): number {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (typeof v === "string" && v.trim()) {
-    const n = Number(v.replace(",", "."));
-    return Number.isFinite(n) ? n : 0;
+type LinhaCreditoMesDb = {
+  valor_evitar_perda: unknown;
+  detalhe: string | null;
+  persistencia_falhou_apos_debito?: boolean | null;
+  blindagem_persistencia_falhou_apos_debito?: boolean | null;
+};
+
+async function buscarLinhasCreditoConsumidoMesUtc(
+  clienteId: string | undefined
+): Promise<LinhaCreditoMesDb[]> {
+  const now = new Date();
+  const inicio = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0)
+  );
+
+  let q = supabaseAdmin
+    .from("consultas_auditoria_eventos")
+    .select(
+      "valor_evitar_perda, detalhe, persistencia_falhou_apos_debito, blindagem_persistencia_falhou_apos_debito"
+    )
+    .eq("evento", "CREDITO_CONSUMIDO")
+    .gte("criado_em", inicio.toISOString());
+
+  const id = (clienteId ?? "").trim();
+  if (id) q = q.eq("cliente_id", id);
+
+  const { data, error } = await q;
+
+  if (error) {
+    console.warn("[consulta_auditoria_db] credito_mes", error.message);
+    return [];
   }
-  return 0;
+
+  return (data ?? []) as LinhaCreditoMesDb[];
 }
 
 /**
- * Soma `valor_evitar_perda` no mês civil UTC atual, só em `CREDITO_CONSUMIDO`
- * (evita contagem dupla com `CONSULTA_SUCESSO`).
+ * Soma `valor_evitar_perda` no mês civil UTC, só em `CREDITO_CONSUMIDO` com
+ * persistência confirmada (ROI confiável — não inclui suspeitos).
  */
 export async function obterSomaValorEvitarPerdaMesUtc(
   clienteId: string
 ): Promise<number> {
   const id = (clienteId ?? "").trim();
   if (!id) return 0;
-
-  const now = new Date();
-  const inicio = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0)
+  const resumo = acumularResumoRoiCreditoPorLinhas(
+    await buscarLinhasCreditoConsumidoMesUtc(id)
   );
+  return resumo.valor_total_protegido_valido;
+}
 
-  const { data, error } = await supabaseAdmin
-    .from("consultas_auditoria_eventos")
-    .select("valor_evitar_perda")
-    .eq("cliente_id", id)
-    .eq("evento", "CREDITO_CONSUMIDO")
-    .gte("criado_em", inicio.toISOString());
-
-  if (error) {
-    console.warn("[consulta_auditoria_db] soma_mes", error.message);
-    return 0;
-  }
-
-  let sum = 0;
-  for (const row of data ?? []) {
-    sum += numOuZero(row.valor_evitar_perda);
-  }
-  return Math.round(sum * 100) / 100;
+/**
+ * Agrega ROI confiável vs suspeito no mês civil UTC (`CREDITO_CONSUMIDO`).
+ * Sem `clienteId`: todos os clientes (painel admin).
+ */
+export async function obterResumoRoiConfiabilidadeMesUtc(
+  clienteId?: string
+): Promise<ResumoRoiConfiabilidade> {
+  const linhas = await buscarLinhasCreditoConsumidoMesUtc(clienteId);
+  return acumularResumoRoiCreditoPorLinhas(linhas);
 }

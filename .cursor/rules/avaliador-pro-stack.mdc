@@ -31,6 +31,13 @@ SaaS B2B para lojistas: calculadora de viabilidade financeira de veículos (marg
 
 - Não adicionar scripts/migrations automáticas no repositório salvo pedido explícito; preferir **SQL para copiar/colar** no painel Supabase quando o utilizador precisar de DDL/policies.
 
+### Schema (`database.sql` + README)
+
+- Toda **nova tabela** ou **nova coluna** usada no código (queries `supabaseAdmin.from(...)`, inserts, etc.) deve:
+  1. Ser adicionada ao arquivo **`database.sql`** na raiz do repositório, com DDL **idempotente** (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS` quando a tabela já existir).
+  2. Ser descrita no **README.md** na secção **Banco de dados (Supabase)** (inventário de tabelas/colunas ou subsecção dedicada).
+- Não deixar o repositório com código apontando para objetos só “no ar” no Supabase sem refletir em `database.sql` e README.
+
 ## Skills instaladas com `npx skills`
 
 O CLI grava em `.agents/skills/<nome-exato-da-pasta>`. O Cursor lê `.cursor/skills/<mesmo-nome>/SKILL.md`. No Windows, criar **junction** (ajuste `NOME` para o nome que o `npx skills` mostrar ao final):

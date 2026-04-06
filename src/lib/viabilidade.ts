@@ -458,14 +458,25 @@ export function calcularViabilidade(
   };
 }
 
+/** % de impacto sobre a FIPE por tipo (ex.: −20 = −20%). Opcional no JSON legado. */
+export type PercentuaisRiscoSimulacaoPersistidos = {
+  percentualLeilao?: number;
+  percentualSinistro?: number;
+  percentualRoubo?: number;
+  percentualGravame?: number;
+};
+
 export type SimulacaoViabilidadePersistida = EntradasViabilidade &
-  ResultadoViabilidade & {
+  ResultadoViabilidade &
+  PercentuaisRiscoSimulacaoPersistidos & {
     atualizadoEm: string;
   };
 
-export function simulacaoFromJSON(
-  raw: unknown
-): Partial<EntradasViabilidade> | null {
+/** Leitura do JSON salvo em `consultas_veiculos.simulacao_viabilidade`. */
+export type LeituraSimulacaoViabilidadeJson = Partial<EntradasViabilidade> &
+  Partial<PercentuaisRiscoSimulacaoPersistidos>;
+
+export function simulacaoFromJSON(raw: unknown): LeituraSimulacaoViabilidadeJson | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   const num = (k: string) => {
@@ -484,5 +495,9 @@ export function simulacaoFromJSON(
     ajusteFipePct: num("ajusteFipePct"),
     precoVendaEsperado: num("precoVendaEsperado"),
     multasDebitosManual: num("multasDebitosManual"),
+    percentualLeilao: num("percentualLeilao"),
+    percentualSinistro: num("percentualSinistro"),
+    percentualRoubo: num("percentualRoubo"),
+    percentualGravame: num("percentualGravame"),
   };
 }

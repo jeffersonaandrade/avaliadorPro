@@ -34,6 +34,11 @@ import {
 import { isPublicDemoMocksMode } from "@/lib/demo-mocks";
 import { isPlacaVeiculoDemonstracao } from "@/lib/placa-teste-demo";
 import {
+  calcularValorEvitarPerdaReais,
+  impactoRiscoAgregado,
+  resolverDecimaisImpactoDeSimulacao,
+} from "@/lib/valor-evitar-perda";
+import {
   calcularAlertasDesvioVendaEsperadaFipe,
   calcularCenarioPessimista,
   isLucroDesejadoElevado,
@@ -139,16 +144,26 @@ export function FormularioViabilidade({
   );
   /** % de impacto sobre a FIPE quando o histórico indica risco (editável). */
   const [pctImpactoLeilao, setPctImpactoLeilao] = useState(() =>
-    Math.round(FATORES_RISCO.leilao * 100)
+    inicial?.percentualLeilao != null && Number.isFinite(inicial.percentualLeilao)
+      ? inicial.percentualLeilao
+      : Math.round(FATORES_RISCO.leilao * 100)
   );
   const [pctImpactoSinistro, setPctImpactoSinistro] = useState(() =>
-    Math.round(FATORES_RISCO.sinistro * 100)
+    inicial?.percentualSinistro != null &&
+    Number.isFinite(inicial.percentualSinistro)
+      ? inicial.percentualSinistro
+      : Math.round(FATORES_RISCO.sinistro * 100)
   );
   const [pctImpactoRoubo, setPctImpactoRoubo] = useState(() =>
-    Math.round(FATORES_RISCO.roubo * 100)
+    inicial?.percentualRoubo != null && Number.isFinite(inicial.percentualRoubo)
+      ? inicial.percentualRoubo
+      : Math.round(FATORES_RISCO.roubo * 100)
   );
   const [pctImpactoGravame, setPctImpactoGravame] = useState(() =>
-    Math.round(FATORES_RISCO.gravame * 100)
+    inicial?.percentualGravame != null &&
+    Number.isFinite(inicial.percentualGravame)
+      ? inicial.percentualGravame
+      : Math.round(FATORES_RISCO.gravame * 100)
   );
   const [formulasNegociacaoVisiveis, setFormulasNegociacaoVisiveis] =
     useState(false);
@@ -228,15 +243,6 @@ export function FormularioViabilidade({
     flagsHistorico.roubo ||
     flagsHistorico.gravame;
 
-  const impactoTotalBruto =
-    (flagsHistorico.leilao ? pctImpactoLeilao / 100 : 0) +
-    (flagsHistorico.sinistro ? pctImpactoSinistro / 100 : 0) +
-    (flagsHistorico.roubo ? pctImpactoRoubo / 100 : 0) +
-    (flagsHistorico.gravame ? pctImpactoGravame / 100 : 0) +
-    (flagsHistorico.renainf ? FATORES_RISCO.renainf : 0);
-
-  const impactoTotal = Math.max(-0.5, impactoTotalBruto);
-
   const fipeValidaParaAjuste =
     Number.isFinite(fipeReferenciaReais) && fipeReferenciaReais > 0;
   const ajusteFipePctClamped = Math.max(
@@ -246,6 +252,20 @@ export function FormularioViabilidade({
       Number.isFinite(ajusteFipePct) ? ajusteFipePct : 0
     )
   );
+
+  const simulacaoViabilidadeParaRoi = {
+    ajusteFipePct: ajusteFipePctClamped,
+    percentualLeilao: pctImpactoLeilao,
+    percentualSinistro: pctImpactoSinistro,
+    percentualRoubo: pctImpactoRoubo,
+    percentualGravame: pctImpactoGravame,
+  };
+
+  const decimaisImpactoHistorico = resolverDecimaisImpactoDeSimulacao(
+    simulacaoViabilidadeParaRoi
+  );
+  const { bruto: impactoTotalBruto, comTeto: impactoTotal } =
+    impactoRiscoAgregado(flagsHistorico, decimaisImpactoHistorico);
   const ajusteFipeDecimal = ajusteFipePctClamped / 100;
   const ajusteTotalMercadoUi = ajusteFipeDecimal + impactoTotal;
 
@@ -289,15 +309,14 @@ export function FormularioViabilidade({
     }
   }
 
-  const fipeSoManualApenasMercado = fipeValidaParaAjuste
-    ? fipeReferenciaReais * (1 + ajusteFipeDecimal)
-    : 0;
+  const valorEvitarPerdaReaisExibicao =
+    calcularValorEvitarPerdaReais({
+      fipeTexto: fipeReferenciaTexto,
+      dadosLeilao: (dadosLeilaoJson ?? null) as Record<string, unknown> | null,
+      simulacaoViabilidade: simulacaoViabilidadeParaRoi,
+    }) ?? 0;
   const perdaHistoricoReais =
-    blindagemAtiva && fipeValidaParaAjuste
-      ? arredondarReais2Ui(
-          Math.max(0, fipeSoManualApenasMercado - vendaRealistaBruta)
-        )
-      : 0;
+    blindagemAtiva && fipeValidaParaAjuste ? valorEvitarPerdaReaisExibicao : 0;
 
   const vendaFipeAjustadaArredondada = arredondarReais2Ui(
     Math.max(0, vendaRealistaBruta)
@@ -333,6 +352,10 @@ export function FormularioViabilidade({
         vendaRealistaReais: contextoFipeMercadoAtivo
           ? baseVendaDecisao
           : null,
+        percentualLeilao: pctImpactoLeilao,
+        percentualSinistro: pctImpactoSinistro,
+        percentualRoubo: pctImpactoRoubo,
+        percentualGravame: pctImpactoGravame,
       });
     }, DEBOUNCE_MS);
     return () => window.clearTimeout(t);
@@ -349,6 +372,10 @@ export function FormularioViabilidade({
     pctLucro,
     pctGordura,
     ajusteFipePct,
+    pctImpactoLeilao,
+    pctImpactoSinistro,
+    pctImpactoRoubo,
+    pctImpactoGravame,
     contextoFipeMercadoAtivo,
     baseVendaDecisao,
     planoAtivo,

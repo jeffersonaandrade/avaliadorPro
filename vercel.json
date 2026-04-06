@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/retencao-auditoria",
+      "schedule": "0 5 * * *"
+    }
+  ]
+}

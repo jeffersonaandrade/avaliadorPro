@@ -14,7 +14,7 @@ type Props = {
 };
 
 /**
- * KPI de retenção: soma `valor_evitar_perda` do mês (eventos `CREDITO_CONSUMIDO` no Supabase).
+ * KPI de retenção: soma `valor_evitar_perda` do mês só em `CREDITO_CONSUMIDO` com persistência confirmada (ROI confiável).
  */
 export function ValorProtegidoMesBanner({
   identificadorCliente,
@@ -70,8 +70,8 @@ export function ValorProtegidoMesBanner({
           <span className="font-mono text-base font-black tabular-nums text-emerald-950">
             {formatarMoedaBRL(total)}
           </span>{" "}
-          em referência de mercado degradada por risco — com base nas blindagens
-          registradas.
+          em referência de mercado degradada por risco — apenas operações com
+          persistência confirmada após o débito.
         </p>
       </div>
     </div>

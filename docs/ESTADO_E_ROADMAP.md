@@ -25,6 +25,8 @@ SaaS B2B para **consulta por placa** (dados do veículo + referência FIPE), **s
 | Salvar simulação | `src/actions/viabilidade-actions.ts` |
 | Consultas premium | `src/actions/consultas-risco-actions.ts`, `src/lib/consultas-risco-premium.ts`, `src/lib/consultar-placa-premium-v2.ts` |
 | Admin / auditoria / antifraude (buffer memória) | `src/app/admin/page.tsx`, `src/lib/consulta-audit-log.ts`, `src/lib/premium-security.ts`, `src/lib/premium-kill-switch.ts`, `src/actions/admin-actions.ts` |
+| **Reconciliação financeira (auditoria Supabase)** | `src/app/admin/reconciliacao/page.tsx`, `src/actions/reconciliacao-actions.ts`, `src/lib/reconciliacao-auditoria.ts`, `src/lib/reconciliacao-persistencia.ts` — leitura de `consultas_auditoria_eventos` (KPIs C/D/E, timeline, agrupamento por `request_id`, checagem opcional vs. `consultas_veiculos`). Coluna `request_id` e índices em `database.sql`. |
+| **Retenção auditoria + ROI consolidado** | `database.sql`: `metricas_mensais_consolidadas`, RPC `auditoria_retencao_executar()` (transação: UPSERT mensal, anti–silent purge, DELETE INICIO/CACHE após 30d, DELETE geral após 90d). `auditoria-retencao.ts`, `/api/cron/retencao-auditoria`, `instrumentation.ts` opcional. |
 | Schema Supabase | `database.sql` |
 | Identificação anônima | `localStorage` `avaliadorPro_client_id` — `src/lib/client-id.ts` |
 
@@ -79,7 +81,7 @@ SaaS B2B para **consulta por placa** (dados do veículo + referência FIPE), **s
 - **Kill switch:** `PREMIUM_API_KILL_SWITCH=true` ou toggle em memória (somente com `NEXT_PUBLIC_USE_MOCKS=true` via `alternarKillSwitchPremiumDemoAction`) bloqueia `consultarRiscoPremiumAction` e `ativarBlindagemCompletaAction` em modo real.
 - **Rate limit (por usuário, em memória):** até 5 consultas premium por minuto; acima de 20 na hora → cooldown de 30 minutos. **Blindagem completa** consome **uma** tentativa de rate limit por ativação (não uma por tipo). **Anti-enumeração:** três placas no padrão antigo sequencial (ex.: AAA0001, AAA0002, AAA0003) → bloqueio ~1 h para auditoria. Em **modo demo público** as checagens são desligadas (`isPublicDemoMocksMode`).
 - **Ordem financeira (produção):** após sucesso da API v2 → **débito de crédito** → **persistência** em `consultas_veiculos`. Falhas geram logs `[INCONSISTENCIA_FINANCEIRA]` no servidor.
-- **Auditoria:** buffer circular em memória (`consulta-audit-log.ts`) + persistência opcional em **`consultas_auditoria_eventos`** no Supabase (`consulta-audit-supabase.ts`, script em `database.sql`): eventos `CONSULTA_INICIO`, `CONSULTA_SUCESSO`, `CONSULTA_ERRO`, `CONSULTA_TIMEOUT`, `CACHE_HIT`, `CREDITO_CONSUMIDO` e campos `tipo_risco_detectado` / `valor_evitar_perda`. KPIs “ao vivo” no admin somam o buffer; em demo a UI usa mocks + dois alertas simulados de uso suspeito.
+- **Auditoria:** buffer circular em memória (`consulta-audit-log.ts`) + persistência opcional em **`consultas_auditoria_eventos`** no Supabase (`consulta-audit-supabase.ts`, script em `database.sql`): eventos `CONSULTA_INICIO`, `CONSULTA_SUCESSO`, `CONSULTA_ERRO`, `CONSULTA_TIMEOUT`, `CACHE_HIT`, `CREDITO_CONSUMIDO` e campos `tipo_risco_detectado` / `valor_evitar_perda` / flags de persistência pós-débito. **ROI comercial:** banner e somas “valor protegido” usam só `CREDITO_CONSUMIDO` **confiável**; o admin `/admin/reconciliacao` exibe também ROI **em verificação** (suspeito). KPIs “ao vivo” no admin somam o buffer; em demo a UI usa mocks + dois alertas simulados de uso suspeito.
 
 ---
 
@@ -246,8 +248,10 @@ Implementação testável em `src/lib/viabilidade-formulario-calculos.ts` (`calc
 
 ### 7.3 KPI `valor_evitar_perda` (produto)
 
-- Calculado no **servidor** após consulta premium com débito (`calcularValorEvitarPerdaReais`): diferença entre referência FIPE ajustada só por mercado e a mesma referência com **impacto agregado de risco** (mesma lógica de fatores padrão da UI; `ajusteFipePct` lido de `simulacao_viabilidade` quando existir).
-- Persistido em `consultas_auditoria_eventos.valor_evitar_perda` nos eventos **`CREDITO_CONSUMIDO`** (soma mensal no painel: `obterValorProtegidoMesAction` / banner “valor protegido este mês”).
+- **Fonte única:** `src/lib/valor-evitar-perda.ts` — `calcularValorEvitarPerdaReais` (FIPE × ajuste de mercado vs. FIPE × (ajuste + impacto de risco)). Renainf segue o fator padrão da UI; leilão/sinistro/roubo/gravame usam **`percentualLeilao` / `percentualSinistro` / `percentualRoubo` / `percentualGravame`** em `simulacao_viabilidade` quando existirem; senão, os mesmos decimais de `FATORES_RISCO` (`historico-veiculo.ts`).
+- **Persistência dos %:** o auto-save (`salvarSimulacaoViabilidadeAction`) grava sempre os quatro percentuais (com fallback aos padrões). A UI e o PDF usam o **mesmo** cálculo (`FormularioViabilidade` + `RelatorioAnalisePdf` via `perdaHistoricoReais`), sem fórmula paralela no React.
+- **Débito premium:** uma variável `valorEvitarPerda` por fluxo alimenta `CREDITO_CONSUMIDO` e o retorno das actions (`valorEvitarPerdaReais` em `consultarRiscoPremiumAction` / `ativarBlindagemCompletaAction`).
+- Persistido em `consultas_auditoria_eventos.valor_evitar_perda` nos eventos **`CREDITO_CONSUMIDO`** (soma mensal: `obterValorProtegidoMesAction` / banner “valor protegido este mês”).
 
 ---
 
