@@ -7,6 +7,10 @@ import { normalizarPlacaInput, placaSchema } from "@/lib/validations";
  */
 export const PLACA_VEICULO_DEMONSTRACAO_PADRAO = "AAA0000" as const;
 
+function permitirMocksEmProducao(): boolean {
+  return String(process.env.AVALIADOR_PERMITIR_MOCKS_EM_PRODUCAO ?? "") === "true";
+}
+
 function placaDemonstracaoResolvidaDoEnv(): string {
   const raw = process.env.NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO?.trim();
   if (!raw) return PLACA_VEICULO_DEMONSTRACAO_PADRAO;
@@ -33,6 +37,12 @@ export function resolverPlacaParaRequisicaoConsultarPlacaApi(
 ): string {
   if (!envNextPublicUseMocksAtivo()) return placaOriginal;
   if (process.env.NODE_ENV === "production") {
+    if (permitirMocksEmProducao()) {
+      console.warn(
+        "[SANDBOX_INTEGRITY_AVISO] Mocks em produção liberados por AVALIADOR_PERMITIR_MOCKS_EM_PRODUCAO=true."
+      );
+      return placaDemonstracaoResolvidaDoEnv();
+    }
     console.error(
       "\n[SANDBOX_INTEGRITY_CRITICO] ═══════════════════════════════════════════════════════\n" +
         "NEXT_PUBLIC_USE_MOCKS está ativo com NODE_ENV=production.\n" +

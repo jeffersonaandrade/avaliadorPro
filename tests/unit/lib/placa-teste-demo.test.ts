@@ -90,5 +90,18 @@ describe("placa-teste-demo", () => {
       expect(err).toHaveBeenCalled();
       err.mockRestore();
     });
+
+    it("NODE_ENV production + override explícito permite placa demo", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      vi.stubEnv("NEXT_PUBLIC_USE_MOCKS", "true");
+      vi.stubEnv("NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO", "AAA0000");
+      vi.stubEnv("AVALIADOR_PERMITIR_MOCKS_EM_PRODUCAO", "true");
+      vi.stubEnv("NODE_ENV", "production");
+      expect(resolverPlacaParaRequisicaoConsultarPlacaApi("BRASIL22")).toBe(
+        "AAA0000"
+      );
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
   });
 });
