@@ -40,9 +40,20 @@ export function BlindagemConversionCard({
       {mostraPreBlindagem ? (
         <>
           <h3 className="text-base font-extrabold leading-snug text-amber-950 sm:text-lg">
-            {vereditoUi === "arriscado"
-              ? "⚠️ Esse carro pode esconder problemas que não aparecem na análise básica."
-              : "⚠️ Existe risco oculto que pode impactar sua margem."}
+            {riscoEstimadoReais > 0 ? (
+              <>
+                🚨 Você pode perder até{" "}
+                <PriceInline
+                  valor={riscoEstimadoReais}
+                  className="font-black text-amber-950"
+                />{" "}
+                nesse carro
+              </>
+            ) : vereditoUi === "arriscado" ? (
+              "⚠️ Esse carro pode esconder problemas que não aparecem na análise básica."
+            ) : (
+              "⚠️ Existe risco oculto que pode impactar sua margem."
+            )}
           </h3>
           <p className="mt-2 text-sm font-semibold leading-relaxed text-amber-950">
             Sem validar o histórico, você pode perder dinheiro mesmo pagando abaixo
@@ -68,7 +79,7 @@ export function BlindagemConversionCard({
               >
                 {consultandoBlindagem
                   ? "Validando histórico..."
-                  : "🛡️ Validar histórico completo (1 crédito)"}
+                  : "🛡️ Validar histórico agora"}
               </button>
             ) : (
               <Link

@@ -295,6 +295,12 @@ export function RelatorioAnalisePdf({
     perdaHistoricoReais,
     rotulosAtivos
   );
+  const riscoPrincipal =
+    rotulosAtivos.length > 0 ? rotulosAtivos[0] : "Sem indícios críticos";
+  const statusBlindagemResumo =
+    blindagemAtiva && contextoFipeMercadoAtivo
+      ? "Histórico validado nas bases premium."
+      : "Histórico premium não validado. A decisão ainda pode mudar após a blindagem.";
 
   return (
     <div
@@ -371,6 +377,54 @@ export function RelatorioAnalisePdf({
       </div>
 
       <div className="relative z-20 mt-6 flex min-w-0 flex-col gap-8 break-words text-pretty leading-relaxed">
+        <section
+          data-pdf-chunk
+          className="relative z-20 min-w-0 overflow-visible rounded-xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5"
+        >
+          <h2 className="text-[11px] font-bold uppercase tracking-widest text-slate-600">
+            RESUMO EXECUTIVO
+          </h2>
+          <ul className="mt-3 space-y-2 text-sm leading-relaxed text-slate-800">
+            <li>
+              <span className="font-semibold text-slate-900">Veredito:</span>{" "}
+              {selo.titulo}
+            </li>
+            <li>
+              <span className="font-semibold text-slate-900">
+                Preço máximo seguro:
+              </span>{" "}
+              {ofertaMaxima !== null && Number.isFinite(ofertaMaxima) ? (
+                <PriceInline valor={ofertaMaxima} className="font-bold" />
+              ) : (
+                "—"
+              )}
+            </li>
+            <li>
+              <span className="font-semibold text-slate-900">
+                Recomendação direta:
+              </span>{" "}
+              {microcopyDecisao.recomendacao}
+            </li>
+            <li>
+              <span className="font-semibold text-slate-900">Risco principal:</span>{" "}
+              {riscoPrincipal}
+            </li>
+            <li>
+              <span className="font-semibold text-slate-900">
+                Valor que você evitou perder:
+              </span>{" "}
+              {exibirPerdaRisco ? (
+                <PriceInline valor={perdaHistoricoReais} className="font-bold" />
+              ) : (
+                "—"
+              )}
+            </li>
+          </ul>
+          <p className="mt-3 text-xs font-medium text-slate-600">
+            {statusBlindagemResumo}
+          </p>
+        </section>
+
         <section
           data-pdf-chunk
           className="relative z-20 min-w-0 overflow-visible rounded-xl border border-slate-200 bg-white p-5 sm:p-6"
@@ -504,6 +558,19 @@ export function RelatorioAnalisePdf({
             limite sugerido e impacto de risco neste relatório.
           </section>
         )}
+
+        <section
+          data-pdf-chunk
+          className="relative z-20 overflow-visible rounded-xl border border-slate-200 bg-white p-4"
+        >
+          <h2 className="text-[11px] font-bold uppercase tracking-widest text-slate-600">
+            ANÁLISE COMPLETA
+          </h2>
+          <p className="mt-1 text-xs leading-relaxed text-slate-600">
+            Provas e detalhes técnicos para sustentar negociação (histórico,
+            dossiê e débitos).
+          </p>
+        </section>
 
         {textoResumoBlindagem ? (
           <section

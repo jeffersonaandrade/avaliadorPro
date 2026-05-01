@@ -190,6 +190,7 @@ export function FormularioViabilidade({
   );
   const [modalBlindagemAberta, setModalBlindagemAberta] = useState(false);
   const [consultandoBlindagem, setConsultandoBlindagem] = useState(false);
+  const [mostrarAnaliseCompleta, setMostrarAnaliseCompleta] = useState(false);
   const [erroConsultaRisco, setErroConsultaRisco] = useState<string | null>(
     null
   );
@@ -526,7 +527,7 @@ export function FormularioViabilidade({
 
   return (
     <div
-      className="relative mx-auto min-w-0 max-w-md space-y-8 overflow-hidden rounded-3xl border border-slate-200/90 bg-gradient-to-b from-slate-50/90 to-white px-4 py-6 shadow-xl shadow-slate-200/30 sm:max-w-3xl sm:space-y-10 sm:px-8 sm:py-8"
+      className="relative mx-auto min-w-0 max-w-md space-y-9 overflow-hidden rounded-3xl border border-slate-200/90 bg-gradient-to-b from-slate-50/90 to-white px-4 py-7 shadow-xl shadow-slate-200/30 sm:max-w-3xl sm:space-y-12 sm:px-8 sm:py-8"
       data-testid="formulario-viabilidade"
     >
       {!planoAtivo ? (
@@ -573,7 +574,7 @@ export function FormularioViabilidade({
       {!fipeDisponivelNaConsulta ? <BlocoDecisaoMercadoPendente /> : null}
 
       {fipeDisponivelNaConsulta && contextoFipeMercadoAtivo ? (
-        <div className="mt-4 space-y-8 sm:space-y-10">
+        <div className="mt-4 space-y-10 sm:space-y-12">
           <DecisionCard
             contextoAtivo={contextoFipeMercadoAtivo}
             blindagemAtiva={blindagemAtiva}
@@ -733,6 +734,18 @@ export function FormularioViabilidade({
         vendaAbaixoDaFipe={vendaAbaixoDaFipe}
       />
 
+      <div className="flex justify-center">
+        <button
+          type="button"
+          onClick={() => setMostrarAnaliseCompleta((v) => !v)}
+          className="min-h-12 rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+          data-testid="btn-toggle-analise-completa"
+        >
+          {mostrarAnaliseCompleta ? "Ocultar análise completa" : "Ver análise completa"}
+        </button>
+      </div>
+
+      {mostrarAnaliseCompleta ? (
       <CalculationDetailsAccordion>
         <details
           className="group min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-100 open:border-indigo-200/90 open:ring-indigo-100 [&_summary::-webkit-details-marker]:hidden"
@@ -971,6 +984,7 @@ export function FormularioViabilidade({
           }
         />
       </CalculationDetailsAccordion>
+      ) : null}
 
       {relatorioVeiculo ? (
         <div className="space-y-3 rounded-2xl border border-cyan-200/70 bg-white p-4 shadow-sm ring-1 ring-cyan-100/80">

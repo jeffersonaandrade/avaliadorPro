@@ -61,7 +61,7 @@ export function obterMicrocopyDecisao(
   }
 
   return {
-    titulo: "⚪ ANALISE INCOMPLETA",
+    titulo: "⚠️ RISCO NAO VALIDADO",
     subtitulo: "Riscos ocultos ainda nao verificados",
     impacto: "Voce pode estar assumindo prejuizo sem saber",
     recomendacao: "Valide o historico para tomar uma decisao segura",

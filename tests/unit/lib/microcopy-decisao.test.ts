@@ -28,7 +28,7 @@ describe("obterMicrocopyDecisao", () => {
 
   it("retorna incompleto quando estado for incompleto", () => {
     const r = obterMicrocopyDecisao("incompleto");
-    expect(r.titulo).toContain("INCOMPLETA");
+    expect(r.titulo).toContain("RISCO NAO VALIDADO");
     expect(r.recomendacao).toContain("historico");
   });
 });
