@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { obterEstadoKillSwitchPremiumAction } from "@/actions/admin-actions";
+import { AdminAssinaturasForm } from "@/components/admin/AdminAssinaturasForm";
 import { AdminKillSwitch } from "@/components/admin/AdminKillSwitch";
 import {
   computarKpisResumoAuditoria,
@@ -170,6 +171,16 @@ export default async function AdminPage() {
         <div className="mb-10">
           <AdminKillSwitch initial={estadoKillSwitch} />
         </div>
+
+        <section
+          className="mb-10"
+          aria-label="Assinaturas (service_role / Supabase)"
+        >
+          <h2 className="mb-3 text-sm font-bold uppercase tracking-widest text-slate-500">
+            Assinaturas
+          </h2>
+          <AdminAssinaturasForm />
+        </section>
 
         <section aria-label="Métricas principais">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

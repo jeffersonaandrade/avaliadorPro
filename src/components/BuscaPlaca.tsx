@@ -17,7 +17,10 @@ import {
 import {
   getEstadoAcessoAction,
   type EstadoAcessoCliente,
+  type StatusAssinaturaUi,
 } from "@/actions/acesso-actions";
+import { comprarCreditosPremiumAction } from "@/actions/comprar-creditos-actions";
+import { mockAdicionarSaldo } from "@/actions/teste-financeiro-actions";
 import {
   buscarVeiculoAction,
   type BuscarVeiculoResult,
@@ -30,6 +33,8 @@ import {
   isPlacaVeiculoDemonstracao,
   isResultadoVeiculoModoDemonstracao,
 } from "@/lib/placa-teste-demo";
+import { formatarMoedaBRLExibicao } from "@/lib/formato-moeda-exibicao";
+import { labelPlanoFromSlug } from "@/lib/planos-marketing";
 
 function consultaEhHoje(iso: string): boolean {
   const d = new Date(iso);
@@ -49,6 +54,21 @@ function formatarDataConsulta(iso: string): string {
   });
 }
 
+function labelStatusAssinatura(s: StatusAssinaturaUi): string {
+  switch (s) {
+    case "ativo":
+      return "Ativa";
+    case "pendente":
+      return "Pendente";
+    case "expirado":
+      return "Expirada";
+    case "cancelado":
+      return "Cancelada";
+    default:
+      return "—";
+  }
+}
+
 export function BuscaPlaca() {
   const { identificador, pronto: sessaoPronta } = useIdentificadorCliente();
   const [placa, setPlaca] = useState("");
@@ -60,6 +80,12 @@ export function BuscaPlaca() {
   );
   const [carregandoAcesso, setCarregandoAcesso] = useState(true);
   const [tickValorProtegidoMes, setTickValorProtegidoMes] = useState(0);
+  const [msgCompraCreditos, setMsgCompraCreditos] = useState<string | null>(
+    null
+  );
+  const [msgSaldoPrePago, setMsgSaldoPrePago] = useState<string | null>(null);
+  const [isComprandoCreditos, startComprarCreditos] = useTransition();
+  const [isAdicionandoSaldoMock, startAdicionarSaldoMock] = useTransition();
 
   const aplicarEstadoAcesso = useCallback((s: EstadoAcessoCliente) => {
     setEstadoAcesso(s);
@@ -146,8 +172,179 @@ export function BuscaPlaca() {
         >
           <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200/90 bg-emerald-50 px-4 py-2 text-xs font-bold uppercase tracking-wide text-emerald-900 shadow-sm">
             <span className="size-2 rounded-full bg-emerald-500" aria-hidden />
-            Plano Profissional Ativo
+            Plano{" "}
+            {estadoAcesso.planoSlug
+              ? labelPlanoFromSlug(estadoAcesso.planoSlug) ?? "ativo"
+              : "Profissional"}{" "}
+            ativo
           </span>
+        </div>
+      ) : null}
+
+      {estadoAcesso?.planoAtivo && identificador.trim() ? (
+        <div
+          className="rounded-2xl border border-slate-200/90 bg-slate-50/90 p-4 text-center shadow-sm sm:p-5 sm:text-left"
+          data-testid="dashboard-cotas-usuario"
+        >
+          <p className="text-sm font-semibold leading-relaxed text-slate-800">
+            {estadoAcesso.consultasFipeRestantes > 0 ? (
+              <>
+                Você ainda pode consultar{" "}
+                <span className="tabular-nums text-indigo-700">
+                  {estadoAcesso.consultasFipeRestantes}
+                </span>{" "}
+                {estadoAcesso.consultasFipeRestantes === 1
+                  ? "veículo"
+                  : "veículos"}{" "}
+                neste mês com a cota inclusa
+              </>
+            ) : estadoAcesso.consultasFipeLimite > 0 ? (
+              <>
+                Cota inclusa de consultas FIPE esgotada neste mês. Consultas extras
+                debitam o seu{" "}
+                <span className="text-indigo-800">saldo pré-pago</span> (valor por
+                consulta conforme o plano).
+              </>
+            ) : (
+              <>Consultas FIPE conforme regras do seu plano.</>
+            )}
+            {estadoAcesso.consultasFipeLimite > 0 ? (
+              <span className="block text-xs font-normal text-slate-500 sm:inline sm:ml-1">
+                (cota: {estadoAcesso.consultasFipeUsadas}/
+                {estadoAcesso.consultasFipeLimite} usadas · mês{" "}
+                {estadoAcesso.fipeMesReferencia} UTC)
+              </span>
+            ) : null}
+            .
+          </p>
+          {estadoAcesso.consultasFipeExcedentes > 0 ||
+          estadoAcesso.valorTotalExcedenteReais > 0 ? (
+            <p className="mt-2 text-sm font-medium text-slate-700">
+              Consultas extras (pré-pago) neste mês:{" "}
+              <span className="tabular-nums text-indigo-800">
+                {estadoAcesso.consultasFipeExcedentes}
+              </span>
+              {" · "}total debitado{" "}
+              <span className="tabular-nums text-indigo-800">
+                {formatarMoedaBRLExibicao(estadoAcesso.valorTotalExcedenteReais)}
+              </span>
+            </p>
+          ) : null}
+          <p
+            className="mt-2 text-sm font-semibold leading-relaxed text-slate-800"
+            data-testid="saldo-pre-pago-fipe"
+          >
+            Saldo pré-pago (FIPE) disponível:{" "}
+            <span className="tabular-nums text-indigo-700">
+              {formatarMoedaBRLExibicao(estadoAcesso.saldoPrePagoReais)}
+            </span>
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Link
+              href="/creditos"
+              className="inline-flex min-h-10 items-center justify-center rounded-xl border-2 border-indigo-200 bg-white px-4 text-sm font-bold text-indigo-800 shadow-sm transition hover:bg-indigo-50"
+              data-testid="link-adicionar-saldo-fipe"
+            >
+              Adicionar saldo
+            </Link>
+            {isPublicDemoMocksMode() && identificador.trim() ? (
+              <button
+                type="button"
+                disabled={isAdicionandoSaldoMock}
+                onClick={() => {
+                  setMsgSaldoPrePago(null);
+                  startAdicionarSaldoMock(async () => {
+                    const r = await mockAdicionarSaldo(50);
+                    if (r.ok) {
+                      await recarregarEstadoAcesso();
+                      setMsgSaldoPrePago(
+                        `Saldo de teste: ${formatarMoedaBRLExibicao(r.data.saldoPrePago)}.`
+                      );
+                    } else {
+                      setMsgSaldoPrePago(r.erro);
+                    }
+                  });
+                }}
+                className="inline-flex min-h-10 items-center justify-center rounded-xl bg-slate-200 px-4 text-xs font-bold uppercase tracking-wide text-slate-800 transition hover:bg-slate-300 disabled:opacity-60"
+              >
+                {isAdicionandoSaldoMock ? "…" : "Sandbox +R$50"}
+              </button>
+            ) : null}
+          </div>
+          {msgSaldoPrePago ? (
+            <p
+              role="status"
+              className="mt-2 text-xs font-medium text-slate-600"
+            >
+              {msgSaldoPrePago}
+            </p>
+          ) : null}
+          {estadoAcesso.dataExpiracaoAssinaturaIso ? (
+            <p className="mt-2 text-xs font-medium text-slate-600">
+              Assinatura:{" "}
+              <span className="text-slate-800">
+                {labelStatusAssinatura(estadoAcesso.statusAssinatura)}
+              </span>
+              {" · "}
+              válida até{" "}
+              <span className="tabular-nums text-slate-800">
+                {formatarDataConsulta(estadoAcesso.dataExpiracaoAssinaturaIso)}
+              </span>
+            </p>
+          ) : null}
+          <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-800">
+            Você possui{" "}
+            <span className="tabular-nums text-indigo-700">
+              {estadoAcesso.creditosPremium}
+            </span>{" "}
+            {estadoAcesso.creditosPremium === 1
+              ? "crédito de blindagem"
+              : "créditos de blindagem"}
+            .
+          </p>
+          <div className="mt-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
+            {estadoAcesso.compraCreditosDiretaHabilitada ? (
+              <button
+                type="button"
+                disabled={isComprandoCreditos}
+                onClick={() => {
+                  setMsgCompraCreditos(null);
+                  startComprarCreditos(async () => {
+                    const r = await comprarCreditosPremiumAction(
+                      identificador,
+                      1
+                    );
+                    if (r.ok) {
+                      await recarregarEstadoAcesso();
+                      setMsgCompraCreditos("Crédito adicionado ao seu saldo.");
+                    } else {
+                      setMsgCompraCreditos(r.erro);
+                    }
+                  });
+                }}
+                className="inline-flex min-h-12 items-center justify-center rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-md transition hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-60"
+                data-testid="btn-comprar-creditos"
+              >
+                {isComprandoCreditos ? "Processando…" : "Comprar mais créditos"}
+              </button>
+            ) : (
+              <Link
+                href="/creditos"
+                className="inline-flex min-h-12 items-center justify-center rounded-xl border-2 border-indigo-200 bg-white px-5 text-sm font-bold text-indigo-800 shadow-sm transition hover:bg-indigo-50"
+                data-testid="link-creditos-planos"
+              >
+                Ver planos e créditos
+              </Link>
+            )}
+          </div>
+          {msgCompraCreditos ? (
+            <p
+              role="status"
+              className="mt-3 text-center text-xs font-medium text-slate-600 sm:text-left"
+            >
+              {msgCompraCreditos}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -219,6 +416,7 @@ export function BuscaPlaca() {
                 autoCapitalize="characters"
                 spellCheck={false}
                 placeholder="ABC1D23"
+                suppressHydrationWarning
                 value={placa}
                 onChange={(e) =>
                   setPlaca(
@@ -323,10 +521,20 @@ export function BuscaPlaca() {
               </div>
             ) : null}
 
+            {resultado.avisoConsultaFipeExcedente ? (
+              <div
+                className="rounded-2xl border border-amber-200/90 bg-amber-50/90 px-5 py-4 text-sm font-medium text-amber-950 shadow-sm"
+                role="status"
+                data-testid="aviso-fipe-excedente"
+              >
+                {resultado.avisoConsultaFipeExcedente}
+              </div>
+            ) : null}
+
             <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
               <div className="min-w-0 space-y-1">
                 <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
-                  Resultado da análise
+                  Resumo da consulta
                 </h3>
                 {isResultadoVeiculoModoDemonstracao(
                   resultado.sandboxAtivo,
@@ -458,7 +666,7 @@ export function BuscaPlaca() {
                   >
                     {resultado.fipe === "—" ? (
                       <span className="block text-left text-xl font-bold leading-snug text-indigo-100/90 sm:text-2xl lg:text-3xl">
-                        Referência não disponível para esta versão ou limite do plano atingido.
+                        Referência não disponível para esta combinação de versão e dados.
                       </span>
                     ) : (
                       resultado.fipe
@@ -466,7 +674,7 @@ export function BuscaPlaca() {
                   </p>
                   <p className="mt-5 max-w-xl text-sm leading-relaxed text-indigo-100/85">
                     {resultado.fipe === "—"
-                      ? "Verifique o aviso acima ou o limite mensal de resoluções do seu plano."
+                      ? "Verifique o aviso acima. A resolução FIPE depende de marca, modelo, ano e combustível retornados pela consulta."
                       : "Valor indicativo para análise de margem. Cruze com custos de pátio, reparo e política comercial antes de fechar negócio."}
                   </p>
                 </div>

@@ -1,0 +1,26 @@
+---
+description: UX comercial Avaliador PRO — valor, clareza, conversão
+alwaysApply: true
+---
+
+# UX — Avaliador PRO
+
+## Princípios
+
+1. Mostrar valor antes de mostrar detalhe
+2. Falar em dinheiro sempre que possível
+3. Reduzir carga cognitiva
+4. Priorizar decisão rápida
+
+## Regras
+
+- Toda tela deve responder: **“Vale a pena comprar?”**
+- Todo bloco deve ter **título claro** e **valor evidente** (em R$ quando couber)
+- **Nunca** esconder informação importante nem usar linguagem técnica desnecessária
+- **Sempre** usar contraste alto e destacar números (`PriceHero` / `PriceInline`, `tabular-nums`)
+- **Mobile-first premium:** espaçamento confortável (`p-4`–`p-6`), botões com área de toque mínima (`min-h-12`), tipografia legível
+- **PDF** segue a mesma hierarquia que a UI (veredito → preço seguro → riscos → lucro → estratégia), com `max-w-[800px]` e textos `break-words` / `text-pretty`
+
+## Objetivo
+
+Sistema que comunica valor e proteção de margem sem esforço — confiança de lojista e material apresentável a terceiros.

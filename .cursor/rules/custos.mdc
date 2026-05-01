@@ -1,0 +1,16 @@
+---
+description: Regras de custo, cache, cotas FIPE/créditos e auditoria (APIs externas)
+alwaysApply: true
+---
+
+# Regras de Custo — Avaliador PRO
+
+1. Toda chamada externa tem custo
+2. Sempre verificar cache antes de API
+3. Nunca consumir crédito em erro
+4. Nunca chamar API sem validar cota
+5. Sempre registrar auditoria
+6. Priorizar economia de chamadas
+
+Objetivo:
+Sistema sustentável financeiramente

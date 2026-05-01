@@ -21,23 +21,32 @@ export function linhasResumoDossiePremium(
       if (letra) out.push(`Classe: ${letra}`);
       const r0 = d.registros[0];
       if (r0) {
+        if (r0.veiculo_placa) out.push(`Placa (registro): ${r0.veiculo_placa}`);
         if (r0.comitente) out.push(`Comitente: ${r0.comitente}`);
         if (r0.lote) out.push(`Lote: ${r0.lote}`);
         if (r0.data_leilao) out.push(`Data: ${r0.data_leilao}`);
       }
+      if (d.parecer_tecnico_parecer) {
+        out.push(`Parecer: ${d.parecer_tecnico_parecer}`);
+      }
+      if (d.sinistros_acidentes_possui_registro) {
+        out.push(`Sinistros/acidentes: ${d.sinistros_acidentes_possui_registro}`);
+      }
       return out;
     }
     case "roubo_furto": {
-      const d = dossie.dados;
-      const r0 = d.registros[0];
-      if (!r0) return [];
-      const out: string[] = [];
-      if (r0.boletim_ocorrencia) out.push(`B.O.: ${r0.boletim_ocorrencia}`);
-      if (r0.data_boletim_ocorrencia) {
-        out.push(`Data da ocorrência: ${r0.data_boletim_ocorrencia}`);
-      }
-      if (r0.uf_ocorrencia) out.push(`UF: ${r0.uf_ocorrencia}`);
-      return out;
+      const { registros } = dossie.dados;
+      if (!registros.length) return [];
+      return registros.map((r, i) =>
+        [
+          r.tipo_ocorrencia || `Ocorrência ${i + 1}`,
+          r.data_boletim_ocorrencia ? r.data_boletim_ocorrencia : null,
+          r.boletim_ocorrencia ? `B.O. ${r.boletim_ocorrencia}` : null,
+          r.uf_ocorrencia ? `UF ${r.uf_ocorrencia}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      );
     }
     case "gravame": {
       const d = dossie.dados;
@@ -49,6 +58,12 @@ export function linhasResumoDossiePremium(
         out.push(`Agente: ${d.agente_financeiro_nome}`);
       }
       if (d.data_registro) out.push(`Registro: ${d.data_registro}`);
+      if (d.registro_placa?.trim()) {
+        out.push(`Placa (registro): ${d.registro_placa.trim()}`);
+      }
+      if (d.registro_uf_placa?.trim()) {
+        out.push(`UF: ${d.registro_uf_placa.trim()}`);
+      }
       return out;
     }
     case "renainf": {

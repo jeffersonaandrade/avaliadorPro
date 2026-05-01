@@ -1,34 +1,76 @@
 "use server";
 
+import { dispararPersistirEventoConsultaAuditoriaDb } from "@/lib/consulta-audit-supabase";
 import { registrarEventoAuditoriaConsulta } from "@/lib/consulta-audit-log";
-import { MOCK_DEMO_USER_ID, isPublicDemoMocksMode } from "@/lib/demo-mocks";
+import {
+  envNextPublicUseMocksAtivo,
+  MOCK_DEMO_USER_ID,
+  isPublicDemoMocksMode,
+} from "@/lib/demo-mocks";
 import { supabaseAdmin } from "@/lib/supabase";
-import { consultarInformacoesBasicas } from "@/lib/consultar-placa";
-import { resolverPrecoFipe } from "@/lib/fipe-resolver";
+import {
+  consultarInformacoesBasicas,
+  consultarPrecoFipePorPlaca,
+} from "@/lib/consultar-placa";
+import {
+  colunasSandboxDbRow,
+  marcacoesSandboxEmDadosLeilaoJson,
+} from "@/lib/sandbox-integrity";
+import type { LinhaConsultaVeiculo } from "@/lib/veiculo-cache";
+import {
+  buscarVeiculoCacheValido,
+  obterEstadoCacheConsultaVeiculo,
+} from "@/lib/veiculo-cache";
 import { placaSchema } from "@/lib/validations";
 import {
+  podeResolverPrecoFipeComFundos,
+  registrarConsultaFipe,
+} from "@/lib/consumo-plano";
+import { formatarMoedaBRLExibicao } from "@/lib/formato-moeda-exibicao";
+import {
   carregarUsuarioAcesso,
-  incrementarConsultaFipeSucesso,
-  MSG_LIMITE_FIPE_PLANO,
+  MSG_LIMITE_FIPE_SEM_SALDO_PRE_PAGO,
   MSG_SEM_PLANO,
   normalizarMesContadorFipe,
-  podeUsarConsultaFipe,
   type UsuarioAcessoRow,
 } from "@/lib/usuario-acesso";
 
 const AVISO_FIPE_INDISPONIVEL =
   "Referência de mercado indisponível para esta versão específica.";
 
-/** TTL do cache base de veículo/FIPE (dias). */
-const TTL_CACHE_VEICULO_DIAS = 30;
-const MS_POR_DIA = 86_400_000;
+function nzTxt(s: string | null | undefined): string {
+  return (s ?? "").trim();
+}
+
+type CamposIdentidadeBasica = {
+  marca: string;
+  modelo: string;
+  anoModelo: number;
+  combustivel: string;
+  tipoVeiculo: string;
+};
+
+/** Mesma identidade técnica já persistida — permite reutilizar FIPE sem nova chamada à API FIPE. */
+function identidadeBasicaIgualLinhaCache(
+  b: CamposIdentidadeBasica,
+  linha: LinhaConsultaVeiculo
+): boolean {
+  return (
+    nzTxt(b.marca) === nzTxt(linha.marca) &&
+    nzTxt(b.modelo) === nzTxt(linha.modelo) &&
+    b.anoModelo === linha.ano &&
+    nzTxt(b.combustivel) === nzTxt(linha.combustivel) &&
+    nzTxt(b.tipoVeiculo) === nzTxt(linha.tipo_veiculo)
+  );
+}
+
+function linhaTemFipeResolvida(linha: LinhaConsultaVeiculo): boolean {
+  const f = nzTxt(linha.fipe);
+  return f.length > 0 && f !== "—";
+}
 
 function isSandboxMocksEnabled(): boolean {
-  return (
-    String(process.env.NEXT_PUBLIC_USE_MOCKS ?? "")
-      .trim()
-      .toLowerCase() === "true"
-  );
+  return envNextPublicUseMocksAtivo();
 }
 
 /** Perfil fixo para FIPE + mocks; sobrescreva com `AVALIADOR_MOCKS_SANDBOX_*` (servidor). */
@@ -99,39 +141,12 @@ export type BuscarVeiculoResult =
       dadosLeilao: Record<string, unknown> | null;
       sandboxAtivo: boolean;
       dadosBasicosForamMockados: boolean;
+      /** Consulta FIPE cobrada além da cota mensal (texto já formatado no servidor). */
+      avisoConsultaFipeExcedente?: string;
     }
   | { sucesso: false; erro: string };
 
-type LinhaConsulta = {
-  placa: string;
-  marca: string;
-  modelo: string;
-  ano: number;
-  fipe: string;
-  chassi: string | null;
-  cor: string | null;
-  combustivel: string | null;
-  tipo_veiculo: string | null;
-  mes_referencia_fipe: string | null;
-  aviso_fipe: string | null;
-  criado_em: string;
-  atualizado_em: string | null;
-  dados_leilao: Record<string, unknown> | null;
-  simulacao_viabilidade: unknown | null;
-};
-
-function timestampReferenciaCache(linha: LinhaConsulta): string {
-  const a = linha.atualizado_em?.trim();
-  if (a) return a;
-  return linha.criado_em?.trim() ?? "";
-}
-
-function cacheBasicoEstaFresco(referenciaIso: string): boolean {
-  const t = Date.parse(referenciaIso);
-  if (!Number.isFinite(t)) return false;
-  const idadeMs = Date.now() - t;
-  return idadeMs < TTL_CACHE_VEICULO_DIAS * MS_POR_DIA;
-}
+type LinhaConsulta = LinhaConsultaVeiculo;
 
 /**
  * Preserva `consultas_premium` do cache expirado ao atualizar dados da API
@@ -182,12 +197,50 @@ function mapRowToSuccess(
   };
 }
 
+function eventoCacheBasico(
+  idCliente: string,
+  placaNorm: string,
+  detalhe: string
+): void {
+  registrarEventoAuditoriaConsulta({
+    usuarioId: idCliente,
+    placa: placaNorm,
+    custoRealReais: 0,
+    statusDebito: "nao_aplicavel_cache",
+    tipo: "uso_cache_basico",
+    detalhe,
+  });
+}
+
 async function consultarVeiculoNaApiEPersistir(
   placaNorm: string,
-  usuario: UsuarioAcessoRow,
+  _usuario: UsuarioAcessoRow,
   idCliente: string,
   linhaAnterior: LinhaConsulta | null
 ): Promise<BuscarVeiculoResult> {
+  const requestIdFluxo =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `veh-${Date.now()}-${placaNorm}`;
+
+  const cacheImediato = await buscarVeiculoCacheValido(placaNorm);
+  if (cacheImediato) {
+    eventoCacheBasico(
+      idCliente,
+      placaNorm,
+      "consulta_veiculo_ttl_antes_consultar_placa"
+    );
+    dispararPersistirEventoConsultaAuditoriaDb({
+      clienteId: idCliente,
+      placa: placaNorm,
+      evento: "CACHE_HIT",
+      tipoConsulta: "consulta_placa_mensal",
+      detalhe: "consulta_veiculo_ttl_antes_consultar_placa",
+      requestId: requestIdFluxo,
+    });
+    return mapRowToSuccess(cacheImediato, "cache");
+  }
+
   const usarMocks = isSandboxMocksEnabled();
   if (usarMocks) {
     console.log(
@@ -199,9 +252,21 @@ async function consultarVeiculoNaApiEPersistir(
     ? dadosBasicosSandbox(placaNorm)
     : await consultarInformacoesBasicas(placaNorm);
 
+  if (!usarMocks) {
+    dispararPersistirEventoConsultaAuditoriaDb({
+      clienteId: idCliente,
+      placa: placaNorm,
+      evento: "API_CALL",
+      tipoConsulta: "consulta_placa_mensal",
+      detalhe: "consultar_placa_basico",
+      requestId: requestIdFluxo,
+    });
+  }
+
   let fipeValor = "—";
   let mesRef: string | null = null;
   let avisoFipe: string | undefined;
+  let fipeMatchBemSucedido = false;
 
   let dadosLeilao: Record<string, unknown> = usarMocks
     ? {
@@ -212,28 +277,63 @@ async function consultarVeiculoNaApiEPersistir(
         fonte_identificacao: "consultar_placa",
       };
 
-  const podeFipe = podeUsarConsultaFipe(usuario);
+  const reutilizarFipeDaLinha =
+    linhaAnterior !== null &&
+    identidadeBasicaIgualLinhaCache(basica, linhaAnterior) &&
+    linhaTemFipeResolvida(linhaAnterior);
 
-  if (!podeFipe) {
-    avisoFipe = MSG_LIMITE_FIPE_PLANO;
+  if (!reutilizarFipeDaLinha) {
+    const brutoGate = await carregarUsuarioAcesso(idCliente);
+    if (!brutoGate) {
+      return {
+        sucesso: false,
+        erro: "Não foi possível validar seu saldo para a consulta FIPE.",
+      };
+    }
+    const uGate = await normalizarMesContadorFipe(brutoGate);
+    if (!podeResolverPrecoFipeComFundos(uGate)) {
+      return { sucesso: false, erro: MSG_LIMITE_FIPE_SEM_SALDO_PRE_PAGO };
+    }
+  }
+
+  let chamouResolverFipeExterno = false;
+  if (reutilizarFipeDaLinha && linhaAnterior) {
+    fipeMatchBemSucedido = true;
+    fipeValor = nzTxt(linhaAnterior.fipe);
+    mesRef = linhaAnterior.mes_referencia_fipe;
+    dadosLeilao = {
+      ...dadosLeilao,
+      fipe_reutilizada_linha_anterior: true,
+    };
   } else {
+    chamouResolverFipeExterno = !usarMocks;
+    if (chamouResolverFipeExterno) {
+      dispararPersistirEventoConsultaAuditoriaDb({
+        clienteId: idCliente,
+        placa: placaNorm,
+        evento: "API_CALL",
+        tipoConsulta: "consulta_placa_mensal",
+        detalhe: "fipe_online_resolver",
+        requestId: requestIdFluxo,
+      });
+    }
     try {
-      const fipe = await resolverPrecoFipe({
-        marca: basica.marca,
-        modelo: basica.modelo,
+      const fipe = await consultarPrecoFipePorPlaca(placaNorm, {
+        modeloVeiculo: basica.modelo,
         anoModelo: basica.anoModelo,
-        combustivel: basica.combustivel,
-        tipoVeiculo: basica.tipoVeiculo,
       });
       if (fipe) {
+        fipeMatchBemSucedido = true;
         fipeValor = fipe.valor;
         mesRef = fipe.mesReferencia;
+        if (fipe.avisoFipe) avisoFipe = fipe.avisoFipe;
         dadosLeilao = {
           ...dadosLeilao,
+          codigo_fipe: fipe.codigoFipe,
           modelo_fipe: fipe.modeloFipeNome,
           combustivel_fipe: fipe.combustivelFipe,
+          historico_fipe_12m: fipe.historico12Meses,
         };
-        await incrementarConsultaFipeSucesso(idCliente);
       } else {
         avisoFipe = AVISO_FIPE_INDISPONIVEL;
         dadosLeilao = { ...dadosLeilao, fipe_match: false };
@@ -251,6 +351,11 @@ async function consultarVeiculoNaApiEPersistir(
       dadosLeilao
     );
   }
+
+  dadosLeilao = {
+    ...dadosLeilao,
+    ...marcacoesSandboxEmDadosLeilaoJson(),
+  };
 
   const consultadoEm = new Date().toISOString();
   const simulacaoPreservada =
@@ -275,6 +380,7 @@ async function consultarVeiculoNaApiEPersistir(
         simulacao_viabilidade: simulacaoPreservada,
         criado_em: consultadoEm,
         atualizado_em: consultadoEm,
+        ...colunasSandboxDbRow(),
       },
       { onConflict: "placa" }
     );
@@ -289,6 +395,27 @@ async function consultarVeiculoNaApiEPersistir(
       sucesso: false,
       erro: `Não foi possível salvar a análise.${hint}`.trim(),
     };
+  }
+
+  let avisoConsultaFipeExcedente: string | undefined;
+  if (fipeMatchBemSucedido && !reutilizarFipeDaLinha) {
+    const requestIdFipe =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `fipe-${Date.now()}-${placaNorm}`;
+    const reg = await registrarConsultaFipe(idCliente, {
+      placa: placaNorm,
+      requestId: requestIdFipe,
+    });
+    if (!reg.ok) {
+      console.error(
+        "[buscarVeiculo] consumo FIPE não registrado (corrida ou persistência)",
+        placaNorm,
+        idCliente
+      );
+    } else if (reg.modo === "excedente") {
+      avisoConsultaFipeExcedente = `Essa consulta consumiu ${formatarMoedaBRLExibicao(reg.valorCobradoReais)} do seu saldo pré-pago.`;
+    }
   }
 
   return {
@@ -308,6 +435,9 @@ async function consultarVeiculoNaApiEPersistir(
     sandboxAtivo: isSandboxMocksEnabled(),
     dadosBasicosForamMockados: usarMocks,
     ...(avisoFipe ? { avisoFipe } : {}),
+    ...(avisoConsultaFipeExcedente
+      ? { avisoConsultaFipeExcedente }
+      : {}),
     origem: "novo",
     consultadoEm,
   };
@@ -343,45 +473,31 @@ export async function buscarVeiculoAction(
   const usuario = await normalizarMesContadorFipe(usuarioBruto);
 
   try {
-    const { data: row, error: readError } = await supabaseAdmin
-      .from("consultas_veiculos")
-      .select(
-        "placa, marca, modelo, ano, fipe, chassi, cor, combustivel, tipo_veiculo, mes_referencia_fipe, aviso_fipe, criado_em, atualizado_em, dados_leilao, simulacao_viabilidade"
-      )
-      .eq("placa", placaNorm)
-      .maybeSingle();
+    const estadoCache = await obterEstadoCacheConsultaVeiculo(placaNorm);
 
-    if (readError) {
-      console.error("[consultas_veiculos] leitura (admin)", readError);
-      const hint =
-        readError.code === "42501" || readError.message.includes("403")
-          ? " Permissão negada (RLS ou chave): revise políticas e SUPABASE_SERVICE_ROLE_KEY."
-          : "";
-      return {
-        sucesso: false,
-        erro: `Não foi possível consultar o banco.${hint}`.trim(),
-      };
+    if (estadoCache.status === "hit") {
+      eventoCacheBasico(idCliente, placaNorm, "consulta_veiculo_ttl");
+      const ridCache =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `cache-veh-${Date.now()}-${placaNorm}`;
+      dispararPersistirEventoConsultaAuditoriaDb({
+        clienteId: idCliente,
+        placa: placaNorm,
+        evento: "CACHE_HIT",
+        tipoConsulta: "consulta_placa_mensal",
+        detalhe: "consulta_veiculo_ttl",
+        requestId: ridCache,
+      });
+      return mapRowToSuccess(estadoCache.linha, "cache");
     }
 
-    if (row) {
-      const linha = row as LinhaConsulta;
-      const refTs = timestampReferenciaCache(linha);
-      if (cacheBasicoEstaFresco(refTs)) {
-        registrarEventoAuditoriaConsulta({
-          usuarioId: idCliente,
-          placa: placaNorm,
-          custoRealReais: 0,
-          statusDebito: "nao_aplicavel_cache",
-          tipo: "uso_cache_basico",
-          detalhe: "consulta_veiculo_ttl",
-        });
-        return mapRowToSuccess(linha, "cache");
-      }
+    if (estadoCache.status === "expirado") {
       return consultarVeiculoNaApiEPersistir(
         placaNorm,
         usuario,
         idCliente,
-        linha
+        estadoCache.linha
       );
     }
 

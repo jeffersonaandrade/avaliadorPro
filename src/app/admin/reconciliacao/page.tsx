@@ -44,6 +44,14 @@ function corEvento(evento: string): string {
       return "text-emerald-300";
     case "CREDITO_CONSUMIDO":
       return "text-amber-200";
+    case "FIPE_CONSUMIDO":
+      return "text-sky-300";
+    case "FIPE_EXCEDENTE_CONSUMIDO":
+      return "text-teal-300";
+    case "COMPRA_CREDITO":
+      return "text-violet-300";
+    case "SALDO_PRE_PAGO_CREDITADO":
+      return "text-fuchsia-300";
     case "CONSULTA_ERRO":
     case "CONSULTA_TIMEOUT":
       return "text-rose-300";
@@ -51,6 +59,8 @@ function corEvento(evento: string): string {
       return "text-cyan-300";
     case "CACHE_HIT":
       return "text-slate-400";
+    case "API_CALL":
+      return "text-lime-300";
     default:
       return "text-slate-200";
   }
@@ -262,7 +272,7 @@ export default async function AdminReconciliacaoPage({
                 {kpis.eFalha}
               </p>
               <p className="mt-1 text-[10px] text-slate-500">
-                CACHE_HIT no período: {kpis.cacheHit}
+                CACHE_HIT: {kpis.cacheHit} · API_CALL: {kpis.apiCall}
               </p>
             </div>
           </div>

@@ -69,6 +69,14 @@ ALTER TABLE public.consultas_veiculos
 
 COMMENT ON COLUMN public.consultas_veiculos.atualizado_em IS 'Última atualização dos dados de veículo/FIPE no cache; se null, o app usa criado_em para o TTL.';
 
+-- Sandbox vs produção: gravações com NEXT_PUBLIC_USE_MOCKS=true no app (QA / localhost).
+ALTER TABLE public.consultas_veiculos
+  ADD COLUMN IF NOT EXISTS is_sandbox BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS ambiente_origem TEXT;
+
+COMMENT ON COLUMN public.consultas_veiculos.is_sandbox IS 'true quando a linha foi gravada com modo mock ativo; reconciliação e ROI orgânico devem ignorar.';
+COMMENT ON COLUMN public.consultas_veiculos.ambiente_origem IS 'Ex.: mock_development para rastreio de ambiente.';
+
 ALTER TABLE public.consultas_veiculos ENABLE ROW LEVEL SECURITY;
 
 -- Exemplo DEV: permite anon ler/escrever (NÃO use em produção sem revisão).
@@ -127,6 +135,26 @@ CREATE TABLE IF NOT EXISTS public.usuario_acesso (
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE public.usuario_acesso
+  ADD COLUMN IF NOT EXISTS plano TEXT;
+
+ALTER TABLE public.usuario_acesso
+  ADD COLUMN IF NOT EXISTS consultas_excedentes INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE public.usuario_acesso
+  ADD COLUMN IF NOT EXISTS valor_total_excedente NUMERIC(10,2) NOT NULL DEFAULT 0;
+
+ALTER TABLE public.usuario_acesso
+  ADD COLUMN IF NOT EXISTS saldo_pre_pago NUMERIC(10,2) NOT NULL DEFAULT 0;
+
+COMMENT ON COLUMN public.usuario_acesso.plano IS 'Slug do plano contratado: starter | pro | premium (espelha limites e créditos do bundle).';
+
+COMMENT ON COLUMN public.usuario_acesso.consultas_excedentes IS 'Consultas FIPE além da cota mensal (mês civil UTC em fipe_mes_referencia; zera na virada de mês junto com consultas_fipe_utilizadas).';
+
+COMMENT ON COLUMN public.usuario_acesso.valor_total_excedente IS 'Soma em R$ debitada do saldo pré-pago no mês de referência (zera na virada de mês).';
+
+COMMENT ON COLUMN public.usuario_acesso.saldo_pre_pago IS 'Saldo R$ pré-pago para consultas FIPE após esgotar a cota mensal (modelo sem cobrança pós-paga).';
+
 COMMENT ON TABLE public.usuario_acesso IS 'Por identificador de cliente (localStorage até auth real): plano, cota FIPE mensal UTC e créditos premium.';
 COMMENT ON COLUMN public.usuario_acesso.fipe_mes_referencia IS 'YYYY-MM UTC; ao mudar o mês, o app zera consultas_fipe_utilizadas.';
 COMMENT ON COLUMN public.usuario_acesso.creditos_premium IS 'Saldo para blindagem completa (leilão, sinistro, roubo, gravame, Renainf); debitado após gravação bem-sucedida.';
@@ -136,7 +164,34 @@ CREATE INDEX IF NOT EXISTS idx_usuario_acesso_atualizado
 
 ALTER TABLE public.usuario_acesso ENABLE ROW LEVEL SECURITY;
 
--- Auditoria de consultas premium (eventos CONSULTA_*, CACHE_HIT, CREDITO_CONSUMIDO).
+-- ---------------------------------------------------------------------------
+-- Assinaturas pagas (fonte de verdade do plano). `usuario_acesso` espelha
+-- limites/consumo; gate de acesso usa `assinaturas` quando
+-- AVALIADOR_LEGACY_ACESSO_SEM_ASSINATURA não estiver ativo.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.assinaturas (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  cliente_id TEXT NOT NULL,
+  plano TEXT NOT NULL CHECK (plano IN ('starter', 'pro', 'premium')),
+  status TEXT NOT NULL CHECK (status IN ('ativo', 'pendente', 'cancelado')),
+  data_inicio TIMESTAMPTZ NOT NULL,
+  data_expiracao TIMESTAMPTZ NOT NULL,
+  origem_pagamento TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_assinaturas_cliente_status
+  ON public.assinaturas (cliente_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_assinaturas_cliente_expiracao
+  ON public.assinaturas (cliente_id, data_expiracao DESC);
+
+COMMENT ON TABLE public.assinaturas IS 'Assinatura B2B; plano e vigência. Histórico: várias linhas por cliente ao longo do tempo.';
+COMMENT ON COLUMN public.assinaturas.origem_pagamento IS 'Ex.: stripe, manual_admin, webhook — livre para integração futura.';
+
+ALTER TABLE public.assinaturas ENABLE ROW LEVEL SECURITY;
+
+-- Auditoria de consultas premium (eventos CONSULTA_*, CACHE_HIT, API_CALL, CREDITO_CONSUMIDO, FIPE_*).
 -- Escrita via service_role nas Server Actions; RLS conforme sua política.
 CREATE TABLE IF NOT EXISTS public.consultas_auditoria_eventos (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -182,6 +237,13 @@ ALTER TABLE public.consultas_auditoria_eventos
 
 COMMENT ON COLUMN public.consultas_auditoria_eventos.persistencia_falhou_apos_debito IS 'Se true em CREDITO_CONSUMIDO: ROI entra em “suspeito” (métricas comerciais devem ignorar).';
 COMMENT ON COLUMN public.consultas_auditoria_eventos.blindagem_persistencia_falhou_apos_debito IS 'Se true em CREDITO_CONSUMIDO: idem persistência blindagem.';
+
+ALTER TABLE public.consultas_auditoria_eventos
+  ADD COLUMN IF NOT EXISTS is_sandbox BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS ambiente_origem TEXT;
+
+COMMENT ON COLUMN public.consultas_auditoria_eventos.is_sandbox IS 'true: evento em modo mock; KPIs de ROI/faturamento orgânico excluem (filtro no app).';
+COMMENT ON COLUMN public.consultas_auditoria_eventos.ambiente_origem IS 'Ex.: mock_development quando is_sandbox.';
 
 -- ---------------------------------------------------------------------------
 -- Retenção + métricas mensais (ROI preservado em agregação antes de DELETE)
@@ -229,6 +291,7 @@ BEGIN
     SELECT 1
     FROM public.consultas_auditoria_eventos
     WHERE criado_em < (NOW() AT TIME ZONE 'UTC') - INTERVAL '30 days'
+      AND (is_sandbox IS NOT TRUE)
     GROUP BY
       cliente_id,
       to_char((criado_em AT TIME ZONE 'UTC'), 'YYYY-MM')
@@ -252,12 +315,15 @@ BEGIN
     (COUNT(*) FILTER (WHERE evento = 'CONSULTA_ERRO'))::int,
     (COUNT(*) FILTER (WHERE evento = 'CONSULTA_TIMEOUT'))::int,
     COALESCE(
-      SUM(valor_evitar_perda) FILTER (WHERE evento = 'CREDITO_CONSUMIDO'),
+      SUM(valor_evitar_perda) FILTER (
+        WHERE evento = 'CREDITO_CONSUMIDO' AND (is_sandbox IS NOT TRUE)
+      ),
       0
     )::numeric(14, 2),
     (NOW() AT TIME ZONE 'UTC')
   FROM public.consultas_auditoria_eventos
   WHERE criado_em < (NOW() AT TIME ZONE 'UTC') - INTERVAL '30 days'
+    AND (is_sandbox IS NOT TRUE)
   GROUP BY
     cliente_id,
     to_char((criado_em AT TIME ZONE 'UTC'), 'YYYY-MM')

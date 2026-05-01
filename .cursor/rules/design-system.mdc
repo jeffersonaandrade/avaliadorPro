@@ -1,0 +1,21 @@
+---
+description: Design System Avaliador PRO — tokens, BaseCard, PriceDisplay, PDF
+alwaysApply: true
+---
+
+# Design System — Avaliador PRO
+
+## Regras obrigatórias
+
+1. **NUNCA** criar UI de card sem considerar `BaseCard` (`src/components/ui/BaseCard.tsx`) quando o bloco for um cartão com título/corpo.
+2. **NUNCA** exibir valores monetários em React sem `PriceDisplay` / `PriceHero` / `PriceInline` (`src/components/ui/PriceDisplay.tsx`) — formatação apenas via `formatarMoedaBRLExibicao` **dentro** desses componentes.
+3. **TODOS** os números monetários em destaque devem usar **`tabular-nums`** + **`whitespace-nowrap`** (já embutidos nos componentes de preço).
+4. **Textos longos** em cards: **`min-w-0`**, **`break-words`**, **`text-pretty`**, **`leading-relaxed`** quando fizer sentido.
+5. **Tokens** centralizados em **`src/design-system/tokens.ts`** (`DS`); compor com **`cn()`** (`src/lib/cn.ts`). Evitar duplicar strings de utilitários que já existem em `DS`.
+6. **Mobile-first** obrigatório; valores grandes em destaque usam **`clamp`** via `DS.typography.heroPrice` / `PriceHero`.
+7. **Evitar** `overflow-hidden` sem necessidade; `BaseCard` usa overflow controlado por padrão.
+8. **PDF** (`RelatorioAnalisePdf`, export html2canvas): reutilizar **`PrecoMaximoSeguro`**, **`VereditoCard`**, **`PriceInline`** — mesma lógica visual que a UI. Container do relatório: **`max-w-[800px] mx-auto`**.
+
+## Objetivo
+
+Eliminar bugs visuais (corte de centavos, quebras feias), alinhar UI e PDF, e escalar o front sem retrabalho.

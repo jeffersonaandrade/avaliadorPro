@@ -5,8 +5,22 @@
 export const FETCH_TIMEOUT_MS_EXTERNAL = 8_000;
 
 /**
- * Renainf e Leilão Prime: em Netlify Free (~10s por função) usamos o mesmo teto de 8s
- * que o restante das chamadas externas. Em ambientes com funções longas, aumente via fork/env.
+ * Renainf: mesmo teto que o restante (8s). Em ambientes com funções longas, ajuste via fork/env.
  */
 export const FETCH_TIMEOUT_MS_RENAINF = FETCH_TIMEOUT_MS_EXTERNAL;
-export const FETCH_TIMEOUT_MS_LEILAO_PRIME = FETCH_TIMEOUT_MS_EXTERNAL;
+
+function timeoutMsFromEnv(name: string): number | null {
+  const raw = process.env[name]?.trim();
+  if (!raw) return null;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Leilão Prime: o provedor recomenda timeout ≥ **300s** quando há processamento de imagens.
+ * Padrão 8s (alinhado a Netlify Free). Em servidor próprio / função longa, defina
+ * `LEILAO_PRIME_FETCH_TIMEOUT_MS` (milissegundos), ex.: `300000` para 5 minutos.
+ */
+export const FETCH_TIMEOUT_MS_LEILAO_PRIME =
+  timeoutMsFromEnv("LEILAO_PRIME_FETCH_TIMEOUT_MS") ??
+  FETCH_TIMEOUT_MS_EXTERNAL;

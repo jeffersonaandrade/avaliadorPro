@@ -35,7 +35,7 @@ Aplicação **SaaS** para **consulta de placa** e **análise de viabilidade de c
 Integrações externas:
 
 - **Consultar Placa** — dados básicos do veículo (API paga).
-- **FIPE (Parallelum)** — resolução de preço via `fipe-resolver` (consumo conforme implementação atual).
+- **Consultar Placa (v2/consultarPrecoFipe)** — referência FIPE por placa (com histórico de 12 meses).
 
 ---
 
@@ -46,6 +46,7 @@ Integrações externas:
 - **Exibição** — marca, modelo, ano, referência de mercado, chassi, cor, combustível, tipo e avisos.
 - **Formulário de viabilidade** — foco no **teto de compra** (oferta máxima segura); custos operacionais (sem incluir o preço pedido); comparação visual pedido × teto e delta; lucro desejado, ajuste FIPE e gordura de negociação.
 - **Motor de viabilidade** (`src/lib/viabilidade.ts`) — custo total operacional, preço de venda sugerido, margem vs FIPE tabela, veredito, oferta máxima e oferta inicial (ancoragem).
+- **Simulador de margem por usuário** (`src/lib/simulador-margem.ts`) — função pura: assinatura + FIPE (incl. excedente) + créditos usados/comprados vs custos unitários (modelo híbrido; ver testes em `tests/unit/lib/simulador-margem.test.ts`).
 - **UX de decisão** — resumo executivo, cenário conservador, alertas contextuais, fluxo mock de **PIX** para “histórico premium” (UI apenas).
 
 ---
@@ -116,23 +117,45 @@ Cache por placa; usada em `veiculo-actions`, `viabilidade-actions`, `consultas-r
 | `fipe` | TEXT | Referência exibida / parseada |
 | `chassi`, `cor`, `combustivel`, `tipo_veiculo` | TEXT | Opcionais |
 | `mes_referencia_fipe`, `aviso_fipe` | TEXT | Metadados FIPE |
-| `dados_leilao` | JSONB | Default `{}`; premium, histórico, etc. |
+| `dados_leilao` | JSONB | Default `{}`; premium, histórico; com `NEXT_PUBLIC_USE_MOCKS=true` inclui `is_sandbox` / `ambiente_origem` (espelho das colunas) |
 | `simulacao_viabilidade` | JSONB | Simulação + veredito; JSON pode incluir `percentualLeilao`, `percentualSinistro`, `percentualRoubo`, `percentualGravame` (ROI alinhado ao audit) |
+| `is_sandbox` | BOOLEAN | Default `false`; `true` se gravado com modo mock (`sandbox-integrity.ts`) |
+| `ambiente_origem` | TEXT | Ex.: `mock_development` quando sandbox |
 | `criado_em` | TIMESTAMPTZ | Default `now()` |
 | `atualizado_em` | TIMESTAMPTZ | Opcional; TTL 30 dias do cache usa `coalesce(atualizado_em, criado_em)` |
 
 #### `public.usuario_acesso`
 
-Plano, cota FIPE mensal e créditos premium; `usuario-acesso.ts`, `provision-usuario-acesso.ts`, auth callback.
+Plano, cota FIPE mensal e créditos premium; `usuario-acesso.ts`, `provision-usuario-acesso.ts`, auth callback. Regras de consumo (blindagem vs FIPE, excedente por plano) em `consumo-plano.ts` + `planos-marketing.ts`. Em sandbox (`NEXT_PUBLIC_USE_MOCKS=true`), `teste-financeiro-actions.ts` expõe `mockSimularCompraCredito`, `mockAdicionarSaldo` e `mockResetarConta` (sem gateway).
 
 | Coluna | Tipo | Notas |
 |--------|------|--------|
 | `identificador` | TEXT | PK — UUID local ou `auth.users.id` |
 | `plano_ativo` | BOOLEAN | Default `false` |
-| `consultas_fipe_utilizadas`, `consultas_fipe_limite` | INTEGER | Cota mensal |
-| `fipe_mes_referencia` | TEXT | `YYYY-MM` UTC; troca de mês zera utilização |
+| `plano` | TEXT | Slug: `starter` \| `pro` \| `premium` (espelha bundle; `database.sql` faz `ADD COLUMN IF NOT EXISTS`) |
+| `consultas_fipe_utilizadas`, `consultas_fipe_limite` | INTEGER | Cota mensal (inclusa) |
+| `consultas_excedentes` | INTEGER | Consultas FIPE além da cota no mês UTC (zera na virada com `fipe_mes_referencia`) |
+| `valor_total_excedente` | NUMERIC(10,2) | Soma R$ debitada do saldo pré-pago no mês (excedente FIPE) |
+| `saldo_pre_pago` | NUMERIC(10,2) | Saldo R$ para FIPE após esgotar a cota mensal (modelo pré-pago) |
+| `fipe_mes_referencia` | TEXT | `YYYY-MM` UTC; troca de mês zera utilização e excedentes |
 | `creditos_premium` | INTEGER | Blindagem / consultas premium |
 | `atualizado_em` | TIMESTAMPTZ | Default `now()` |
+
+#### `public.assinaturas`
+
+Assinatura paga (vigência e plano); fonte de verdade do acesso quando `AVALIADOR_LEGACY_ACESSO_SEM_ASSINATURA=false`. Ver `src/lib/assinaturas.ts`.
+
+| Coluna | Tipo | Notas |
+|--------|------|--------|
+| `id` | UUID | PK |
+| `cliente_id` | TEXT | Mesmo identificador que `usuario_acesso.identificador` |
+| `plano` | TEXT | `starter` \| `pro` \| `premium` |
+| `status` | TEXT | `ativo` \| `pendente` \| `cancelado` |
+| `data_inicio`, `data_expiracao` | TIMESTAMPTZ | Ciclo atual (ex.: +30 dias na ativação) |
+| `origem_pagamento` | TEXT | Opcional (Stripe, admin, webhook, …) |
+| `criado_em` | TIMESTAMPTZ | Default `now()` |
+
+**Variáveis:** `AVALIADOR_LEGACY_ACESSO_SEM_ASSINATURA` — default `true`: sem linha em `assinaturas`, o app ainda usa `usuario_acesso.plano_ativo` (migração). Defina `false` após backfill. `AVALIADOR_ADMIN_SECRET` — obrigatório para `assinaturas-admin-actions` (ativar/cancelar/alterar plano pelo servidor).
 
 #### `public.consultas_auditoria_eventos`
 
@@ -144,19 +167,21 @@ Trail de auditoria premium; `consulta-audit-supabase.ts`, reconciliação admin,
 | `criado_em` | TIMESTAMPTZ | Default `now()` |
 | `cliente_id` | TEXT | Identificador do cliente |
 | `placa` | TEXT | |
-| `evento` | TEXT | Ex.: `CONSULTA_INICIO`, `CONSULTA_SUCESSO`, `CREDITO_CONSUMIDO`, … |
+| `evento` | TEXT | Ex.: `CONSULTA_*`, `CACHE_HIT`, `API_CALL` (HTTP externo pós-resposta), `CREDITO_CONSUMIDO`, `FIPE_CONSUMIDO`, `FIPE_EXCEDENTE_CONSUMIDO`, `COMPRA_CREDITO`, … |
 | `tipo_consulta`, `detalhe` | TEXT | Opcionais |
 | `valor_evitar_perda` | NUMERIC(14,2) | Opcional; ROI auditável |
 | `tipo_risco_detectado` | TEXT | Opcional |
 | `request_id` | TEXT | Opcional; correlaciona eventos da mesma operação |
 | `persistencia_falhou_apos_debito` | BOOLEAN | Default `false`; em `CREDITO_CONSUMIDO`, `true` classifica ROI como suspeito |
 | `blindagem_persistencia_falhou_apos_debito` | BOOLEAN | Idem para fluxo blindagem |
+| `is_sandbox` | BOOLEAN | Default `false`; eventos gerados com `NEXT_PUBLIC_USE_MOCKS=true` — **excluídos** de ROI/reconciliação orgânica |
+| `ambiente_origem` | TEXT | Ex.: `mock_development` |
 
 Índices documentados no `database.sql`: `(cliente_id, criado_em)`, `(placa, criado_em)`, `(request_id)` parcial, `(evento, criado_em)`.
 
 #### `public.metricas_mensais_consolidadas`
 
-Agregação mensal por cliente antes da limpeza de `consultas_auditoria_eventos` (retenção). Preenchida pela função SQL `auditoria_retencao_executar()` (ver `database.sql`). `valor_total_protegido` soma apenas eventos `CREDITO_CONSUMIDO`.
+Agregação mensal por cliente antes da limpeza de `consultas_auditoria_eventos` (retenção). Preenchida pela função SQL `auditoria_retencao_executar()` (ver `database.sql`). Agrega **apenas** linhas com `is_sandbox IS NOT TRUE`; `valor_total_protegido` soma `CREDITO_CONSUMIDO` orgânico.
 
 | Coluna | Tipo | Notas |
 |--------|------|--------|
@@ -220,7 +245,7 @@ avaliadorPro/
 │   │   └── formulario-viabilidade/  # UI modular do formulário
 │   └── lib/
 │       ├── consultar-placa.ts    # Cliente API Consultar Placa
-│       ├── fipe-resolver.ts      # Referência FIPE (Parallelum)
+│       ├── fipe-resolver.ts      # Legado FIPE (não usado no fluxo atual)
 │       ├── usuario-acesso.ts     # Plano, limite mensal FIPE, créditos premium
 │       ├── client-id.ts          # UUID anônimo (localStorage)
 │       ├── consultas-risco-premium.ts
@@ -248,8 +273,9 @@ Crie **`.env.local`** na raiz com:
 | `SUPABASE_SERVICE_ROLE_KEY` | **Somente servidor** | Sim | Service role — usada em actions admin; **nunca** exponha no client. |
 | `CONSULTAR_PLACA_API_EMAIL` | Servidor | Sim* | E-mail da conta Consultar Placa. |
 | `CONSULTAR_PLACA_API_KEY` | Servidor | Sim* | API key Consultar Placa. |
-| `API_CONSULTAR_PLACA_TOKEN` | **Somente servidor** | Sim† | Bearer para endpoints premium v2 (`consultarRegistroLeilaoPrime`, sinistro, roubo/furto, gravame). **Nunca** `NEXT_PUBLIC_`. |
-| `NEXT_PUBLIC_USE_MOCKS` | Build/client | Não | `true` — evita chamada paga à API de placa em dev (dados sandbox). |
+| `API_CONSULTAR_PLACA_TOKEN` | **Somente servidor** | Não† | Bearer opcional para premium v2; se vazio, usa **Basic** com `CONSULTAR_PLACA_API_EMAIL` + `CONSULTAR_PLACA_API_KEY`. **Nunca** `NEXT_PUBLIC_`. |
+| `LEILAO_PRIME_FETCH_TIMEOUT_MS` | Servidor | Não | Timeout (ms) só para **Leilão Prime** (`/v2/consultarRegistroLeilaoPrime`). Padrão **8000** (igual às outras rotas). A documentação do provedor sugere **≥ 300000** ms quando há processamento pesado de imagens — use em hospedagem com funções longas. |
+| `NEXT_PUBLIC_USE_MOCKS` | Build/client | Não | Valor **exato** `true` (minúsculo) — modo demonstração, sandbox de veículo e **interceptação da placa** nas URLs da Consultar Placa (`NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO` / `AAA0000`). |
 | `NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO` | Build/client | Não | Placa tratada como “demonstração” na UI quando **não** há `NEXT_PUBLIC_USE_MOCKS` (badge, PDF). Padrão `AAA0000` se ausente ou formato inválido. |
 | `AVALIADOR_MOCKS_SANDBOX_MARCA` | Servidor | Não | Com mocks ligados, sobrescreve marca do perfil sandbox (FIPE / `dadosBasicosSandbox`). |
 | `AVALIADOR_MOCKS_SANDBOX_MODELO` | Servidor | Não | Idem — modelo. |
@@ -259,12 +285,13 @@ Crie **`.env.local`** na raiz com:
 | `AVALIADOR_MOCKS_SANDBOX_COMBUSTIVEL` | Servidor | Não | Idem — combustível. |
 | `AVALIADOR_MOCKS_SANDBOX_TIPO_VEICULO` | Servidor | Não | Idem — tipo de veículo (ex. Automovel). |
 | `AVALIADOR_DEV_ACESSO_TOTAL` | Servidor | Não | `true` — **somente local**: ignora tabela `usuario_acesso` e simula plano ativo + limites altos (nunca em produção). |
+| `AVALIADOR_PERMITIR_COMPRA_CREDITO_DIRETA` | Servidor | Não | `true` — permite `comprarCreditosPremiumAction` sem gateway de pagamento (staging/dev). **Nunca** em produção sem substituir por webhook Stripe/PIX. |
 | `CRON_SECRET` | Servidor | Para cron | Segredo compartilhado com o agendador (ex.: Vercel Cron); obrigatório para `/api/cron/retencao-auditoria` responder 200. |
 | `RETENCAO_AUDITORIA_ON_STARTUP` | Servidor | Não | `true` — executa `auditoria_retencao_executar` ao iniciar o Node (instrumentation); use com cautela. |
 
 \*Não obrigatórias se `NEXT_PUBLIC_USE_MOCKS=true` para desenvolvimento.
 
-†Obrigatória para **consultas premium reais** (API v2 com Bearer). **Sem** esse token e com `NEXT_PUBLIC_USE_MOCKS=true`, premium usa mock determinístico. **Com** token definido, premium chama a API v2 mesmo em modo mocks.
+†Para **consultas premium reais** (v2): defina **Bearer** (`API_CONSULTAR_PLACA_TOKEN`) **ou** o par **email + key** (Basic). **Sem** Bearer e **sem** email+key, com `NEXT_PUBLIC_USE_MOCKS=true`, premium fica em mock determinístico. **Com** credencial v2 e `NEXT_PUBLIC_USE_MOCKS=true`, o servidor chama a API com a placa **`NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO`** (padrão `AAA0000`), não com a placa digitada na análise simulada.
 
 **Auth (Supabase):** no painel do projeto, em Authentication → URL Configuration, inclua **Redirect URLs**: `http://localhost:3000/auth/callback` (e o equivalente em produção). Para **Google OAuth**, ative o provider e defina o Client ID/Secret. O middleware protege `/painel`; login e cadastro redirecionam usuários já autenticados.
 
@@ -280,7 +307,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 CONSULTAR_PLACA_API_EMAIL=seu@email.com
 CONSULTAR_PLACA_API_KEY=sua_chave
-# API_CONSULTAR_PLACA_TOKEN=...   # produção: premium v2 (servidor)
+# API_CONSULTAR_PLACA_TOKEN=...   # opcional: Bearer v2 (senão usa email+key em Basic)
 
 # Opcional em dev:
 # NEXT_PUBLIC_USE_MOCKS=true
@@ -294,9 +321,9 @@ CONSULTAR_PLACA_API_KEY=sua_chave
 
 ## Modo mock (desenvolvimento)
 
-Com `NEXT_PUBLIC_USE_MOCKS=true`, o fluxo usa **dados fixos de sandbox** (perfil padrão HB20, sobrescrevível por `AVALIADOR_MOCKS_SANDBOX_*`) para **qualquer placa válida** — a chave no banco continua sendo a placa digitada, mas o cenário exibido é o de demonstração. A UI trata todo resultado com `sandboxAtivo` como **veículo de teste** (badge + “Fonte: Sandbox / Simulação”), no mesmo espírito da placa de demonstração configurável (`NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO`, padrão `AAA0000`) usada **sem** a flag só para ensaio pontual. As **consultas premium** ficam em **mock** só quando **não** há `API_CONSULTAR_PLACA_TOKEN` no servidor; com o token definido, premium chama a **API Consultar Placa v2** mesmo em modo mocks (inclui placa sandbox do provedor com retorno real). A resolução FIPE segue `fipe-resolver` quando há cota. O **middleware** libera `/painel` **sem login**; limites simulados tipo **Premium** **sem gravar** em `usuario_acesso`. Em produção, **não** defina esta flag como `true`.
+Com `NEXT_PUBLIC_USE_MOCKS=true`, o fluxo usa **dados fixos de sandbox** (perfil padrão HB20, sobrescrevível por `AVALIADOR_MOCKS_SANDBOX_*`) para **qualquer placa válida** — a chave no banco continua sendo a placa digitada, mas o cenário exibido é o de demonstração. A UI trata todo resultado com `sandboxAtivo` como **veículo de teste** (badge + “Fonte: Sandbox / Simulação”), no mesmo espírito da placa de demonstração configurável (`NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO`, padrão `AAA0000`). As **consultas premium** ficam em **mock** só quando **não** há credencial v2: nem `API_CONSULTAR_PLACA_TOKEN` nem o par `CONSULTAR_PLACA_API_EMAIL` + `CONSULTAR_PLACA_API_KEY`. Com Bearer **ou** email+key, premium chama a **API Consultar Placa v2** (Basic ou Bearer) mesmo em modo mocks; o parâmetro `placa` dessas requisições usa **`NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO`** (padrão `AAA0000`). A referência FIPE também é consultada pela **Consultar Placa** (`/v2/consultarPrecoFipe`) e segue o mesmo padrão de placa de demonstração em mock. O **middleware** libera `/painel` **sem login**; limites simulados tipo **Premium** **sem gravar** em `usuario_acesso`. Em produção, **não** defina esta flag como `true`.
 
-**FIPE (Parallelum) ≠ placa teste Consultar Placa:** a referência FIPE **não** é consultada por placa. O `fipe-resolver` envia **marca, modelo, ano modelo, combustível e tipo de veículo** à API Parallelum. Com mocks ligados, esses atributos vêm do **perfil sandbox** em `veiculo-actions.ts` (`dadosBasicosSandbox`: HB20 por padrão, opcionalmente via `AVALIADOR_MOCKS_SANDBOX_*`), não de `NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO`. Uma placa sandbox do provedor Consultar Placa (ex. documentação `AAA0000` ou a que você configurar no env) serve aos **endpoints Consultar Placa** (básico / v2); **não** substitui nem alimenta diretamente o contrato da FIPE. O modo teste fixa o **conjunto marca/modelo/ano** (customizável) adequado ao matching FIPE.
+**FIPE por Consultar Placa:** a referência FIPE é consultada por placa em `GET /v2/consultarPrecoFipe`, sem dependência de outro fornecedor. Em mock, a placa enviada segue `NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO` (padrão `AAA0000`) como nas demais chamadas do provedor.
 
 Útil para UI, viabilidade e testes sem custo de API.
 

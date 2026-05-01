@@ -8,12 +8,14 @@ import {
 } from "lucide-react";
 
 import { RadarAnimation } from "@/components/landing/RadarAnimation";
+import { SeoProofBlock } from "@/components/landing/SeoProofBlock";
+import { StickyLandingCTA } from "@/components/landing/StickyLandingCTA";
 import { PLANOS_LANDING } from "@/lib/planos-marketing";
 
 export const metadata = {
-  title: "Avaliador PRO — Viabilidade veicular B2B",
+  title: "Descubra em segundos se um carro dá lucro ou prejuízo",
   description:
-    "Teto de negociação, riscos ocultos e veredito matemático para lojas de veículos.",
+    "Evite prejuízo em carros de leilão, sinistro ou com histórico oculto. Calcule preço máximo seguro para revenda.",
 };
 
 function CtaPrimary({
@@ -99,16 +101,19 @@ export default function LandingPage() {
               B2B · pátio · decisão com dados
             </p>
             <h1 className="text-balance text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-4xl md:text-5xl lg:text-[2.75rem] lg:leading-[1.12]">
-              Margem real no pátio: avalie veículos com a precisão de uma
-              ferramenta{" "}
+              Descubra em segundos se um carro dá{" "}
               <span className="bg-gradient-to-r from-cyan-300 to-cyan-500 bg-clip-text text-transparent">
-                Enterprise
+                lucro ou prejuízo
               </span>
               .
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-pretty text-base leading-relaxed text-slate-400 sm:text-lg">
-              Descubra o teto de negociação, identifique riscos ocultos (leilão,
-              sinistro) e proteja o caixa da sua loja de repasses ruins.
+              Evite prejuízo em carros de leilão, sinistro ou com histórico oculto.
+              Descubra quanto pagar com segurança antes de fechar negócio.
+            </p>
+            <p className="mx-auto mt-2 max-w-2xl text-sm font-semibold text-red-300 sm:text-base">
+              Se você paga FIPE sem validar histórico, assume risco real de
+              prejuízo.
             </p>
             <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
               <CtaPrimary href="/painel">Avaliar primeira placa</CtaPrimary>
@@ -122,6 +127,8 @@ export default function LandingPage() {
           </div>
         </section>
 
+        <SeoProofBlock />
+
         <section
           className="border-b border-slate-800 bg-slate-900/40 px-4 py-14 sm:px-6 sm:py-20"
           aria-labelledby="radar-heading"
@@ -133,7 +140,9 @@ export default function LandingPage() {
             >
               Raio-X completo em tempo real
             </h2>
-            <RadarAnimation />
+            <div className="mx-auto max-w-5xl opacity-80">
+              <RadarAnimation />
+            </div>
             <p className="mx-auto mt-8 max-w-xl text-center text-sm text-slate-500 sm:text-base">
               Visualização ilustrativa dos sinais que o motor cruza com FIPE,
               histórico e consultas de risco para compor o teto de compra.
@@ -295,9 +304,28 @@ export default function LandingPage() {
                 </div>
               ))}
             </div>
+            <div className="mt-10 flex justify-center">
+              <CtaPrimary href="/painel" className="w-full max-w-md">
+                Descobrir se vale a pena agora
+              </CtaPrimary>
+            </div>
           </div>
         </section>
       </main>
+
+      <section className="border-t border-slate-800 bg-slate-950 px-4 py-10 sm:px-6 sm:py-12">
+        <div className="mx-auto max-w-4xl rounded-2xl border border-cyan-400/30 bg-slate-900/70 p-5 text-center sm:p-7">
+          <p className="text-lg font-bold text-white sm:text-xl">
+            Evite comprar no escuro.
+          </p>
+          <p className="mt-2 text-sm text-slate-300 sm:text-base">
+            Descubra agora se esse carro dá lucro ou prejuízo.
+          </p>
+          <div className="mt-5">
+            <CtaPrimary href="/painel">Analisar veículo agora</CtaPrimary>
+          </div>
+        </div>
+      </section>
 
       <footer className="border-t border-slate-800 bg-slate-950 px-4 py-8 sm:px-6">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 text-center text-sm text-slate-500 sm:flex-row sm:text-left">
@@ -325,6 +353,7 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+      <StickyLandingCTA />
     </div>
   );
 }

@@ -9,7 +9,13 @@ describe("planos-marketing", () => {
       "pro",
       "premium",
     ]);
-    expect(PLANOS_LANDING.find((p) => p.slug === "starter")?.fipeMes).toBe(20);
+    expect(PLANOS_LANDING.find((p) => p.slug === "starter")?.fipeMes).toBe(10);
+    expect(PLANOS_LANDING.find((p) => p.slug === "pro")?.fipeMes).toBe(30);
+    expect(PLANOS_LANDING.find((p) => p.slug === "premium")?.fipeMes).toBe(60);
+    expect(PLANOS_LANDING.find((p) => p.slug === "pro")?.creditosRisco).toBe(1);
+    expect(PLANOS_LANDING.find((p) => p.slug === "premium")?.creditosRisco).toBe(
+      3
+    );
     expect(PLANOS_LANDING.find((p) => p.slug === "pro")?.destaque).toBe(true);
   });
 

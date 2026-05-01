@@ -30,14 +30,21 @@ import {
 } from "@/lib/api-v2/parsers";
 import { MOCK_DEMO_USER_ID, isPublicDemoMocksMode } from "@/lib/demo-mocks";
 import {
+  colunasSandboxDbRow,
+  marcacoesSandboxEmDadosLeilaoJson,
+} from "@/lib/sandbox-integrity";
+import {
   getCustoUnitarioPremiumReais,
   registrarEventoAuditoriaConsulta,
 } from "@/lib/consulta-audit-log";
 import { isPremiumApiKillSwitchActive } from "@/lib/premium-kill-switch";
 import { registrarTentativaConsultaPremium } from "@/lib/premium-security";
 import {
+  consumirBlindagem,
+  podeConsumirBlindagem,
+} from "@/lib/consumo-plano";
+import {
   carregarUsuarioAcesso,
-  debitarCreditoPremium,
   MSG_SEM_CREDITOS_PREMIUM,
   MSG_SEM_PLANO,
 } from "@/lib/usuario-acesso";
@@ -206,7 +213,7 @@ export async function consultarRiscoPremiumAction(
         return { sucesso: false, erro: sec.motivo };
       }
     }
-    if (!usarMock && usuario.creditos_premium < 1) {
+    if (!usarMock && !podeConsumirBlindagem(usuario)) {
       return { sucesso: false, erro: MSG_SEM_CREDITOS_PREMIUM };
     }
 
@@ -236,11 +243,12 @@ export async function consultarRiscoPremiumAction(
         const dadosLeilao: Record<string, unknown> = {
           ...prevRoot,
           consultas_premium: block,
+          ...marcacoesSandboxEmDadosLeilaoJson(),
         };
         sincronizarEvidenciasRenainfDePremium(dadosLeilao);
         const { error: writeError } = await supabaseAdmin
           .from("consultas_veiculos")
-          .update({ dados_leilao: dadosLeilao })
+          .update({ dados_leilao: dadosLeilao, ...colunasSandboxDbRow() })
           .eq("placa", placaNorm);
         if (writeError) {
           console.error("[consultas_risco] update (mock)", writeError);
@@ -255,6 +263,17 @@ export async function consultarRiscoPremiumAction(
         console.info(
           `[CONSULTA_SUCESSO] tipo=${tipoOk} placa=${placaNorm} modo=mock sem_debito`
         );
+        dispararPersistirEventoConsultaAuditoriaDb({
+          clienteId: idCliente,
+          placa: placaNorm,
+          evento: "CONSULTA_SUCESSO",
+          tipoConsulta: tipoOk,
+          tipoRiscoDetectado: constatado
+            ? `${tipoOk}_constatado`
+            : `${tipoOk}_limpo`,
+          detalhe: "modo_mock_sem_debito",
+          requestId: requestIdOperacao,
+        });
         registrarEventoAuditoriaConsulta({
           usuarioId: idCliente,
           placa: placaNorm,
@@ -321,6 +340,15 @@ export async function consultarRiscoPremiumAction(
         };
       }
 
+      dispararPersistirEventoConsultaAuditoriaDb({
+        clienteId: idCliente,
+        placa: placaNorm,
+        evento: "API_CALL",
+        tipoConsulta: tipoOk,
+        detalhe: "consultar_placa_premium_v2",
+        requestId: requestIdOperacao,
+      });
+
       const json = fetchResult.json;
       if (!corpoRespostaMinimoValido(json)) {
         console.info(
@@ -380,6 +408,7 @@ export async function consultarRiscoPremiumAction(
         consultas_premium: block,
       };
       sincronizarEvidenciasRenainfDePremium(dadosLeilao);
+      Object.assign(dadosLeilao, marcacoesSandboxEmDadosLeilaoJson());
 
       const valorEvitarPerda = calcularValorEvitarPerdaReais({
         fipeTexto: typeof row.fipe === "string" ? row.fipe : "—",
@@ -387,7 +416,7 @@ export async function consultarRiscoPremiumAction(
         simulacaoViabilidade: row.simulacao_viabilidade,
       });
 
-      const debitou = await debitarCreditoPremium(idCliente);
+      const debitou = await consumirBlindagem(idCliente);
       if (!debitou) {
         console.error(
           "[INCONSISTENCIA_FINANCEIRA] api_consultar_placa_v2_ok mas debito_credito_premium_falhou",
@@ -413,7 +442,7 @@ export async function consultarRiscoPremiumAction(
 
       const { error: writeError } = await supabaseAdmin
         .from("consultas_veiculos")
-        .update({ dados_leilao: dadosLeilao })
+        .update({ dados_leilao: dadosLeilao, ...colunasSandboxDbRow() })
         .eq("placa", placaNorm);
 
       if (writeError) {
@@ -430,6 +459,17 @@ export async function consultarRiscoPremiumAction(
         console.info(
           `[CONSULTA_ERRO] tipo=${tipoOk} placa=${placaNorm} motivo=persistencia`
         );
+        dispararPersistirEventoConsultaAuditoriaDb({
+          clienteId: idCliente,
+          placa: placaNorm,
+          evento: "CREDITO_CONSUMIDO",
+          tipoConsulta: tipoOk,
+          detalhe: "debito_1_credito_persistencia_falhou",
+          valorEvitarPerda: valorEvitarPerda ?? undefined,
+          tipoRiscoDetectado: constatado ? `${tipoOk}_constatado` : `${tipoOk}_limpo`,
+          persistenciaFalhouAposDebito: true,
+          requestId: requestIdOperacao,
+        });
         dispararPersistirEventoConsultaAuditoriaDb({
           clienteId: idCliente,
           placa: placaNorm,
@@ -588,7 +628,7 @@ export async function ativarBlindagemCompletaAction(
       if (!usarMock && isPremiumApiKillSwitchActive()) {
         return { sucesso: false, erro: MSG_KILL_SWITCH_PREMIUM };
       }
-      if (!usarMock && usuario.creditos_premium < 1) {
+      if (!usarMock && !podeConsumirBlindagem(usuario)) {
         return { sucesso: false, erro: MSG_SEM_CREDITOS_PREMIUM };
       }
 
@@ -597,17 +637,19 @@ export async function ativarBlindagemCompletaAction(
         if (!secBlind.ok) {
           return { sucesso: false, erro: secBlind.motivo };
         }
-        console.info(
-          `[CONSULTA_INICIO] blindagem_completa placa=${placaNorm} tipos=${faltantes.join(",")}`
-        );
-        dispararPersistirEventoConsultaAuditoriaDb({
-          clienteId: idCliente,
-          placa: placaNorm,
-          evento: "CONSULTA_INICIO",
-          detalhe: `blindagem_completa faltantes=${faltantes.join(",")}`,
-          requestId: requestIdBlindagem,
-        });
       }
+      console.info(
+        `[CONSULTA_INICIO] blindagem_completa placa=${placaNorm} tipos=${faltantes.join(",")} mock=${usarMock}`
+      );
+      dispararPersistirEventoConsultaAuditoriaDb({
+        clienteId: idCliente,
+        placa: placaNorm,
+        evento: "CONSULTA_INICIO",
+        detalhe: usarMock
+          ? `blindagem_completa_mock faltantes=${faltantes.join(",")}`
+          : `blindagem_completa faltantes=${faltantes.join(",")}`,
+        requestId: requestIdBlindagem,
+      });
 
       const consultadoEm = new Date().toISOString();
 
@@ -659,6 +701,15 @@ export async function ativarBlindagemCompletaAction(
                 : fetchResult.mensagem,
           };
         }
+
+        dispararPersistirEventoConsultaAuditoriaDb({
+          clienteId: idCliente,
+          placa: placaNorm,
+          evento: "API_CALL",
+          tipoConsulta: tipoOk,
+          detalhe: "consultar_placa_premium_v2_blindagem",
+          requestId: requestIdBlindagem,
+        });
 
         const json = fetchResult.json;
         if (!corpoRespostaMinimoValido(json)) {
@@ -716,6 +767,7 @@ export async function ativarBlindagemCompletaAction(
         consultas_premium: block,
       };
       sincronizarEvidenciasRenainfDePremium(dadosLeilao);
+      Object.assign(dadosLeilao, marcacoesSandboxEmDadosLeilaoJson());
 
       const valorEvitarPerdaBlindagem = calcularValorEvitarPerdaReais({
         fipeTexto: typeof row.fipe === "string" ? row.fipe : "—",
@@ -724,7 +776,7 @@ export async function ativarBlindagemCompletaAction(
       });
 
       if (!usarMock) {
-        const debitou = await debitarCreditoPremium(idCliente);
+        const debitou = await consumirBlindagem(idCliente);
         if (!debitou) {
           console.error(
             "[INCONSISTENCIA_FINANCEIRA] blindagem_apis_ok mas debito_credito_premium_falhou",
@@ -747,7 +799,7 @@ export async function ativarBlindagemCompletaAction(
 
       const { error: writeError } = await supabaseAdmin
         .from("consultas_veiculos")
-        .update({ dados_leilao: dadosLeilao })
+        .update({ dados_leilao: dadosLeilao, ...colunasSandboxDbRow() })
         .eq("placa", placaNorm);
 
       if (writeError) {
@@ -760,6 +812,18 @@ export async function ativarBlindagemCompletaAction(
           }
         );
         console.error("[blindagem_completa] persistência", writeError);
+        const trFalha = tiposRiscoConstatadosPremium(block);
+        dispararPersistirEventoConsultaAuditoriaDb({
+          clienteId: idCliente,
+          placa: placaNorm,
+          evento: "CREDITO_CONSUMIDO",
+          detalhe: "blindagem_completa_persistencia_falhou",
+          tipoRiscoDetectado: trFalha,
+          valorEvitarPerda: valorEvitarPerdaBlindagem ?? undefined,
+          persistenciaFalhouAposDebito: true,
+          blindagemPersistenciaFalhouAposDebito: true,
+          requestId: requestIdBlindagem,
+        });
         dispararPersistirEventoConsultaAuditoriaDb({
           clienteId: idCliente,
           placa: placaNorm,

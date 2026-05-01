@@ -28,6 +28,33 @@ export type LeilaoPrimeRegistro = {
   comitente: string;
   lote: string;
   data_leilao: string;
+  /** Placa no registro do leilão (API `registro_leiloes.registros[].placa`). */
+  veiculo_placa?: string;
+  /** Máscara/chassi mascarado — API costuma enviar em `classi`. */
+  chassi_mascarado?: string;
+  renavam?: string;
+  ano_fabricacao?: string;
+  ano_modelo?: string;
+  segmento?: string;
+  sub_segmento?: string;
+  numero_motor?: string;
+};
+
+/** Detalhes do parecer técnico (chaves como na API). */
+export type LeilaoPrimeParecerDetalhes = Record<string, string>;
+
+export type LeilaoPrimeRemarketingRegistro = {
+  item: string;
+  organizador: string;
+  data_evento: string;
+  condicao_geral_veiculo: string;
+  condicao_motor: string;
+  condicao_cambio: string;
+};
+
+export type LeilaoPrimeIaPecaDanificada = {
+  descricao: string;
+  probabilidade: string;
 };
 
 export type LeilaoPrimeIaDano = {
@@ -47,6 +74,14 @@ export type LeilaoPrimeDossie = {
   fotos_remarketing: string[];
   /** Mantido vazio na serialização — imagens remotas não entram no painel/PDF rasterizado. */
   imagens_ia: string[];
+  /** `registro_sinistros_acidentes.possui_registro` na API. */
+  sinistros_acidentes_possui_registro?: string;
+  parecer_tecnico_parecer?: string;
+  parecer_tecnico_detalhes?: LeilaoPrimeParecerDetalhes;
+  /** `situacao_analise` do bloco IA. */
+  ia_situacao_analise?: string;
+  ia_pecas_danificadas?: LeilaoPrimeIaPecaDanificada[];
+  remarketing_registros?: LeilaoPrimeRemarketingRegistro[];
 };
 
 export type SinistroDossie = {
@@ -71,6 +106,10 @@ export type GravameDossie = {
   agente_financeiro_cnpj: string;
   data_registro: string;
   situacao: string;
+  /** Campos do `registro` na API (`consultarGravame`), quando consta gravame. */
+  registro_placa?: string;
+  registro_chassi?: string;
+  registro_uf_placa?: string;
 };
 
 export type RenainfInfracao = {
@@ -81,6 +120,17 @@ export type RenainfInfracao = {
   numero_auto_infracao?: string;
   data_hora_infracao?: string;
   municipio?: string;
+  /** `dados_infracao.tipo_auto_infracao` (API Renainf). */
+  tipo_auto_infracao?: string;
+  /** Bloco `aplicacao` (ex.: medição de velocidade). */
+  aplicacao_unidade_medida?: string;
+  aplicacao_limite_permitido?: string;
+  aplicacao_medicao_real?: string;
+  aplicacao_medicao_considerada?: string;
+  /** `eventos` adicionais além de `data_hora_infracao`. */
+  data_cadastramento?: string;
+  data_notificacao?: string;
+  data_emissao_penalidade?: string;
 };
 
 export type RenainfDossie = {
@@ -135,14 +185,42 @@ export function tituloClassificacaoLeilaoPrime(letra: string): string {
   return LEILAO_PRIME_CLASSIFICACAO_TITULOS[L] ?? `Classe ${L || "?"} — consulte o suporte para interpretação.`;
 }
 
+function probIaParaTexto(v: unknown): string {
+  if (typeof v === "number" && Number.isFinite(v)) return `${v}%`;
+  return str(v as string);
+}
+
 function mapRegistroLeilaoPrime(r: unknown): LeilaoPrimeRegistro | null {
   const o = rec(r);
   if (!o) return null;
-  return {
+  const base: LeilaoPrimeRegistro = {
     comitente: str(o.comitente ?? o.leiloeiro ?? o.nome_comitente),
     lote: str(o.lote ?? o.numero_lote ?? o.lote_numero),
     data_leilao: str(o.data_leilao ?? o.dataLeilao ?? o.data),
   };
+  const vp = str(o.placa);
+  const cm = str(o.classi ?? o.chassi_mascarado ?? o.chassiMascarado);
+  const rnv = str(o.renavam);
+  const af = str(o.ano_fabricacao ?? o.anoFabricacao);
+  const am = str(o.ano_modelo ?? o.anoModelo);
+  const seg = str(o.segmento);
+  const sub = str(o.sub_segmento ?? o.subSegmento);
+  const nm = str(o.numero_motor ?? o.numeroMotor);
+  if (vp) base.veiculo_placa = vp;
+  if (cm) base.chassi_mascarado = cm;
+  if (rnv) base.renavam = rnv;
+  if (af) base.ano_fabricacao = af;
+  if (am) base.ano_modelo = am;
+  if (seg) base.segmento = seg;
+  if (sub) base.sub_segmento = sub;
+  if (nm) base.numero_motor = nm;
+  const temAlgum =
+    base.comitente ||
+    base.lote ||
+    base.data_leilao ||
+    base.veiculo_placa ||
+    base.chassi_mascarado;
+  return temAlgum ? base : null;
 }
 
 export function parsearLeilaoPrimeDossie(
@@ -200,19 +278,38 @@ export function parsearLeilaoPrimeDossie(
     .map((p) => {
       const o = rec(p);
       if (!o) return null;
+      const prob = probIaParaTexto(
+        o.probabilidade ?? o.probabilidade_percentual ?? o.score
+      );
       return {
         local: str(o.local ?? o.local_dano),
         descricao: str(o.descricao ?? o.descricao_dano),
-        probabilidade: str(
-          o.probabilidade ?? o.probabilidade_percentual ?? o.score
-        ),
+        probabilidade: prob,
       };
     })
     .filter(
       (x): x is LeilaoPrimeIaDano =>
         x !== null &&
         (Boolean(x.local) || Boolean(x.descricao) || Boolean(x.probabilidade))
+    );
+
+  const pecasSrc = iaRoot ?? iaBlock;
+  const pecasRaw = arr(
+    pecasSrc?.possiveis_pecas_danificadas ??
+      pecasSrc?.possiveisPecasDanificadas
   );
+  const ia_pecas_danificadas: LeilaoPrimeIaPecaDanificada[] = pecasRaw
+    .map((p) => {
+      const o = rec(p);
+      if (!o) return null;
+      const descricao = str(o.descricao);
+      const probabilidade = probIaParaTexto(
+        o.probabilidade ?? o.probabilidade_percentual
+      );
+      if (!descricao && !probabilidade) return null;
+      return { descricao, probabilidade: probabilidade || "—" };
+    })
+    .filter((x): x is LeilaoPrimeIaPecaDanificada => x !== null);
 
   const rem = rec(
     dados.informacoes_sobre_remarketing ?? dados.informacoesSobreRemarketing
@@ -226,10 +323,57 @@ export function parsearLeilaoPrimeDossie(
     ...fotosRemarketingInf,
   ].filter((u, i, a) => a.indexOf(u) === i);
 
+  const remarketing_registros: LeilaoPrimeRemarketingRegistro[] = arr(
+    rem?.registros
+  ).flatMap((row) => {
+    const x = rec(row);
+    if (!x) return [];
+    const item: LeilaoPrimeRemarketingRegistro = {
+      item: str(x.item),
+      organizador: str(x.organizador),
+      data_evento: str(x.data_evento ?? x.dataEvento),
+      condicao_geral_veiculo: str(
+        x.condicao_geral_veiculo ?? x.condicaoGeralVeiculo
+      ),
+      condicao_motor: str(x.condicao_motor ?? x.condicaoMotor),
+      condicao_cambio: str(x.condicao_cambio ?? x.condicaoCambio),
+    };
+    if (
+      !item.item &&
+      !item.organizador &&
+      !item.data_evento &&
+      !item.condicao_geral_veiculo
+    ) {
+      return [];
+    }
+    return [item];
+  });
+
+  const rsa = rec(
+    inf.registro_sinistros_acidentes ?? inf.registroSinistrosAcidentes
+  );
+  const sinistros_acidentes_possui_registro = str(rsa?.possui_registro);
+  const pt = rec(inf.parecer_tecnico ?? inf.parecerTecnico);
+  const parecer_tecnico_parecer = str(pt?.parecer);
+  const detPar = rec(pt?.detalhes);
+  let parecer_tecnico_detalhes: LeilaoPrimeParecerDetalhes | undefined;
+  if (detPar) {
+    const flat: LeilaoPrimeParecerDetalhes = {};
+    for (const k of Object.keys(detPar)) {
+      const vv = detPar[k];
+      const t = typeof vv === "string" ? str(vv) : "";
+      if (t) flat[k] = t;
+    }
+    if (Object.keys(flat).length) parecer_tecnico_detalhes = flat;
+  }
+  const ia_situacao_analise = iaRoot
+    ? str(iaRoot.situacao_analise ?? iaRoot.situacaoAnalise)
+    : "";
+
   /** URLs de IA não persistem no dossiê serializado — só texto (danos) é exibido. */
   const imagens_ia: string[] = [];
 
-  return {
+  const doc: LeilaoPrimeDossie = {
     classificacao_letra: letra,
     classificacao_titulo,
     classificacao_descricao,
@@ -238,6 +382,22 @@ export function parsearLeilaoPrimeDossie(
     fotos_remarketing,
     imagens_ia,
   };
+  if (sinistros_acidentes_possui_registro) {
+    doc.sinistros_acidentes_possui_registro =
+      sinistros_acidentes_possui_registro;
+  }
+  if (parecer_tecnico_parecer) doc.parecer_tecnico_parecer = parecer_tecnico_parecer;
+  if (parecer_tecnico_detalhes) {
+    doc.parecer_tecnico_detalhes = parecer_tecnico_detalhes;
+  }
+  if (ia_situacao_analise) doc.ia_situacao_analise = ia_situacao_analise;
+  if (ia_pecas_danificadas.length) {
+    doc.ia_pecas_danificadas = ia_pecas_danificadas;
+  }
+  if (remarketing_registros.length) {
+    doc.remarketing_registros = remarketing_registros;
+  }
+  return doc;
 }
 
 export function parsearRouboFurtoDossie(dados: JsonRecord): RouboFurtoDossie {
@@ -270,7 +430,10 @@ export function parsearGravameDossie(dados: JsonRecord): GravameDossie | null {
   if (!g) return null;
   const reg = rec(g.registro);
   const agente = rec(reg?.agente_financeiro ?? reg?.agenteFinanceiro);
-  return {
+  const placa = str(reg?.placa);
+  const chassi = str(reg?.chassi);
+  const ufPlaca = str(reg?.uf_placa ?? reg?.ufPlaca);
+  const base: GravameDossie = {
     agente_financeiro_nome: str(agente?.nome ?? reg?.agente_financeiro_nome),
     agente_financeiro_cnpj: str(
       agente?.cnpj ??
@@ -281,6 +444,10 @@ export function parsearGravameDossie(dados: JsonRecord): GravameDossie | null {
     data_registro: str(reg?.data_registro ?? reg?.dataRegistro),
     situacao: str(reg?.situacao),
   };
+  if (placa) base.registro_placa = placa;
+  if (chassi) base.registro_chassi = chassi;
+  if (ufPlaca) base.registro_uf_placa = ufPlaca;
+  return base;
 }
 
 function extrairInfracaoRenainfDeItem(item: unknown): RenainfInfracao | null {
@@ -289,6 +456,7 @@ function extrairInfracaoRenainfDeItem(item: unknown): RenainfInfracao | null {
   const di = rec(o.dados_infracao ?? o.dadosInfracao);
   const src = di ?? o;
   const ev = rec(o.eventos);
+  const ap = rec(o.aplicacao);
   const infracao = str(src.infracao ?? o.descricao ?? o.tipo_infracao);
   const orgao_autuador = str(src.orgao_autuador ?? o.orgaoAutuador ?? o.orgao);
   const valor_aplicado = str(src.valor_aplicado ?? o.valorAplicado ?? o.valor);
@@ -302,6 +470,9 @@ function extrairInfracaoRenainfDeItem(item: unknown): RenainfInfracao | null {
   const numero_auto_infracao = str(
     src.numero_auto_infracao ?? src.numeroAutoInfracao ?? o.numero_auto
   );
+  const tipo_auto_infracao = str(
+    src.tipo_auto_infracao ?? src.tipoAutoInfracao
+  );
   const data_hora_infracao = str(
     ev?.data_hora_infracao ??
       ev?.dataHoraInfracao ??
@@ -309,6 +480,23 @@ function extrairInfracaoRenainfDeItem(item: unknown): RenainfInfracao | null {
       o.data_hora_infracao
   );
   const municipio = str(src.municipio ?? o.municipio);
+  const aplicacao_unidade_medida = str(
+    ap?.unidade_medida ?? ap?.unidadeMedida
+  );
+  const aplicacao_limite_permitido = str(
+    ap?.limite_permitido ?? ap?.limitePermitido
+  );
+  const aplicacao_medicao_real = str(ap?.medicao_real ?? ap?.medicaoReal);
+  const aplicacao_medicao_considerada = str(
+    ap?.medicao_considerada ?? ap?.medicaoConsiderada
+  );
+  const data_cadastramento = str(
+    ev?.data_cadastramento ?? ev?.dataCadastramento
+  );
+  const data_notificacao = str(ev?.data_notificacao ?? ev?.dataNotificacao);
+  const data_emissao_penalidade = str(
+    ev?.data_emissao_penalidade ?? ev?.dataEmissaoPenalidade
+  );
   const out: RenainfInfracao = {
     infracao,
     orgao_autuador,
@@ -318,6 +506,22 @@ function extrairInfracaoRenainfDeItem(item: unknown): RenainfInfracao | null {
   if (numero_auto_infracao) out.numero_auto_infracao = numero_auto_infracao;
   if (data_hora_infracao) out.data_hora_infracao = data_hora_infracao;
   if (municipio) out.municipio = municipio;
+  if (tipo_auto_infracao) out.tipo_auto_infracao = tipo_auto_infracao;
+  if (aplicacao_unidade_medida) {
+    out.aplicacao_unidade_medida = aplicacao_unidade_medida;
+  }
+  if (aplicacao_limite_permitido) {
+    out.aplicacao_limite_permitido = aplicacao_limite_permitido;
+  }
+  if (aplicacao_medicao_real) out.aplicacao_medicao_real = aplicacao_medicao_real;
+  if (aplicacao_medicao_considerada) {
+    out.aplicacao_medicao_considerada = aplicacao_medicao_considerada;
+  }
+  if (data_cadastramento) out.data_cadastramento = data_cadastramento;
+  if (data_notificacao) out.data_notificacao = data_notificacao;
+  if (data_emissao_penalidade) {
+    out.data_emissao_penalidade = data_emissao_penalidade;
+  }
   return out;
 }
 
@@ -368,7 +572,10 @@ export function parsearRenainfDossie(dados: JsonRecord): RenainfDossie {
           Boolean(x.local_infracao) ||
           Boolean(x.numero_auto_infracao) ||
           Boolean(x.data_hora_infracao) ||
-          Boolean(x.municipio))
+          Boolean(x.municipio) ||
+          Boolean(x.tipo_auto_infracao) ||
+          Boolean(x.aplicacao_medicao_real) ||
+          Boolean(x.aplicacao_limite_permitido))
     );
 
   let soma = 0;
@@ -430,32 +637,109 @@ export function dossieFromStoredBlock(raw: unknown): ConsultaPremiumDossie | nul
   if (!o) return null;
   const k = str(o.kind ?? o.tipo);
   if (k === "leilao" || k === "leilao_prime") {
+    const registros: LeilaoPrimeRegistro[] = arr(o.registros).flatMap((r) => {
+      const x = rec(r);
+      if (!x) return [];
+      const b: LeilaoPrimeRegistro = {
+        comitente: str(x.comitente),
+        lote: str(x.lote),
+        data_leilao: str(x.data_leilao),
+      };
+      const vp = str(x.veiculo_placa ?? x.placa);
+      const cm = str(x.chassi_mascarado ?? x.classi);
+      const rnv = str(x.renavam);
+      const af = str(x.ano_fabricacao);
+      const am = str(x.ano_modelo);
+      const seg = str(x.segmento);
+      const sub = str(x.sub_segmento);
+      const nm = str(x.numero_motor);
+      if (vp) b.veiculo_placa = vp;
+      if (cm) b.chassi_mascarado = cm;
+      if (rnv) b.renavam = rnv;
+      if (af) b.ano_fabricacao = af;
+      if (am) b.ano_modelo = am;
+      if (seg) b.segmento = seg;
+      if (sub) b.sub_segmento = sub;
+      if (nm) b.numero_motor = nm;
+      const temAlgum =
+        b.comitente ||
+        b.lote ||
+        b.data_leilao ||
+        b.veiculo_placa ||
+        b.chassi_mascarado ||
+        b.renavam ||
+        b.ano_fabricacao ||
+        b.ano_modelo ||
+        b.segmento ||
+        b.sub_segmento ||
+        b.numero_motor;
+      return temAlgum ? [b] : [];
+    });
+    const ia_danos: LeilaoPrimeIaDano[] = arr(o.ia_danos).flatMap((p) => {
+      const x = rec(p);
+      if (!x) return [];
+      return [
+        {
+          local: str(x.local),
+          descricao: str(x.descricao),
+          probabilidade: str(x.probabilidade),
+        },
+      ];
+    });
+    const ia_pecas_danificadas: LeilaoPrimeIaPecaDanificada[] = arr(
+      o.ia_pecas_danificadas
+    ).flatMap((p) => {
+      const x = rec(p);
+      if (!x) return [];
+      const descricao = str(x.descricao);
+      const probabilidade = str(x.probabilidade);
+      if (!descricao && !probabilidade) return [];
+      return [{ descricao, probabilidade: probabilidade || "—" }];
+    });
+    const remarketing_registros: LeilaoPrimeRemarketingRegistro[] = arr(
+      o.remarketing_registros
+    ).flatMap((row) => {
+      const x = rec(row);
+      if (!x) return [];
+      const item: LeilaoPrimeRemarketingRegistro = {
+        item: str(x.item),
+        organizador: str(x.organizador),
+        data_evento: str(x.data_evento ?? x.dataEvento),
+        condicao_geral_veiculo: str(
+          x.condicao_geral_veiculo ?? x.condicaoGeralVeiculo
+        ),
+        condicao_motor: str(x.condicao_motor ?? x.condicaoMotor),
+        condicao_cambio: str(x.condicao_cambio ?? x.condicaoCambio),
+      };
+      if (
+        !item.item &&
+        !item.organizador &&
+        !item.data_evento &&
+        !item.condicao_geral_veiculo &&
+        !item.condicao_motor &&
+        !item.condicao_cambio
+      ) {
+        return [];
+      }
+      return [item];
+    });
+    let parecer_tecnico_detalhes: LeilaoPrimeParecerDetalhes | undefined;
+    const pdRaw = o.parecer_tecnico_detalhes;
+    if (pdRaw && typeof pdRaw === "object" && !Array.isArray(pdRaw)) {
+      const flat: LeilaoPrimeParecerDetalhes = {};
+      for (const key of Object.keys(pdRaw as JsonRecord)) {
+        const vv = (pdRaw as JsonRecord)[key];
+        const t = typeof vv === "string" ? str(vv) : "";
+        if (t) flat[key] = t;
+      }
+      if (Object.keys(flat).length) parecer_tecnico_detalhes = flat;
+    }
     const d: LeilaoPrimeDossie = {
       classificacao_letra: str(o.classificacao_letra),
       classificacao_titulo: str(o.classificacao_titulo),
       classificacao_descricao: str(o.classificacao_descricao),
-      registros: arr(o.registros).flatMap((r) => {
-        const x = rec(r);
-        if (!x) return [];
-        return [
-          {
-            comitente: str(x.comitente),
-            lote: str(x.lote),
-            data_leilao: str(x.data_leilao),
-          },
-        ];
-      }),
-      ia_danos: arr(o.ia_danos).flatMap((p) => {
-        const x = rec(p);
-        if (!x) return [];
-        return [
-          {
-            local: str(x.local),
-            descricao: str(x.descricao),
-            probabilidade: str(x.probabilidade),
-          },
-        ];
-      }),
+      registros,
+      ia_danos,
       fotos_remarketing: arr(o.fotos_remarketing).filter(
         (x): x is string => typeof x === "string"
       ),
@@ -463,6 +747,21 @@ export function dossieFromStoredBlock(raw: unknown): ConsultaPremiumDossie | nul
         (x): x is string => typeof x === "string"
       ),
     };
+    const sin = str(o.sinistros_acidentes_possui_registro);
+    if (sin) d.sinistros_acidentes_possui_registro = sin;
+    const ptp = str(o.parecer_tecnico_parecer);
+    if (ptp) d.parecer_tecnico_parecer = ptp;
+    if (parecer_tecnico_detalhes) {
+      d.parecer_tecnico_detalhes = parecer_tecnico_detalhes;
+    }
+    const iaSit = str(o.ia_situacao_analise);
+    if (iaSit) d.ia_situacao_analise = iaSit;
+    if (ia_pecas_danificadas.length) {
+      d.ia_pecas_danificadas = ia_pecas_danificadas;
+    }
+    if (remarketing_registros.length) {
+      d.remarketing_registros = remarketing_registros;
+    }
     return { tipo: "leilao", dados: d };
   }
   if (k === "roubo_furto") {
@@ -485,17 +784,21 @@ export function dossieFromStoredBlock(raw: unknown): ConsultaPremiumDossie | nul
     };
   }
   if (k === "gravame") {
-    return {
-      tipo: "gravame",
-      dados: {
-        agente_financeiro_nome: str(o.agente_financeiro_nome),
-        agente_financeiro_cnpj: str(
-          o.agente_financeiro_cnpj ?? o.cnpj_agente ?? o.cnpj
-        ),
-        data_registro: str(o.data_registro),
-        situacao: str(o.situacao),
-      },
+    const dados: GravameDossie = {
+      agente_financeiro_nome: str(o.agente_financeiro_nome),
+      agente_financeiro_cnpj: str(
+        o.agente_financeiro_cnpj ?? o.cnpj_agente ?? o.cnpj
+      ),
+      data_registro: str(o.data_registro),
+      situacao: str(o.situacao),
     };
+    const rp = str(o.registro_placa ?? o.placa);
+    const rc = str(o.registro_chassi ?? o.chassi);
+    const ruf = str(o.registro_uf_placa ?? o.uf_placa ?? o.ufPlaca);
+    if (rp) dados.registro_placa = rp;
+    if (rc) dados.registro_chassi = rc;
+    if (ruf) dados.registro_uf_placa = ruf;
+    return { tipo: "gravame", dados };
   }
   if (k === "renainf") {
     const d = renainfFromStored(o);
@@ -639,8 +942,48 @@ export function extrairLaudoTecnicoParaPdf(
         out.leilaoParagrafos.push(d.classificacao_descricao);
       }
       for (const r of d.registros) {
+        const extras = [
+          r.veiculo_placa ? `placa ${r.veiculo_placa}` : null,
+          r.chassi_mascarado ? `classi/chassi ${r.chassi_mascarado}` : null,
+          r.renavam ? `renavam ${r.renavam}` : null,
+          r.ano_fabricacao ? `fab. ${r.ano_fabricacao}` : null,
+          r.ano_modelo ? `mod. ${r.ano_modelo}` : null,
+          r.segmento ? `segmento ${r.segmento}` : null,
+          r.sub_segmento ? `sub ${r.sub_segmento}` : null,
+          r.numero_motor ? `motor ${r.numero_motor}` : null,
+        ]
+          .filter(Boolean)
+          .join(", ");
         out.leilaoParagrafos.push(
-          `Leilão — comitente (leiloeiro): ${r.comitente || "—"}, lote ${r.lote || "—"}, data ${r.data_leilao || "—"}.`
+          `Leilão — comitente (leiloeiro): ${r.comitente || "—"}, lote ${r.lote || "—"}, data ${r.data_leilao || "—"}${extras ? `; ${extras}` : ""}.`
+        );
+      }
+      if (d.sinistros_acidentes_possui_registro) {
+        out.leilaoParagrafos.push(
+          `Sinistros/acidentes (fonte): ${d.sinistros_acidentes_possui_registro}.`
+        );
+      }
+      if (d.parecer_tecnico_parecer) {
+        out.leilaoParagrafos.push(
+          `Parecer técnico: ${d.parecer_tecnico_parecer}.`
+        );
+      }
+      if (d.parecer_tecnico_detalhes) {
+        for (const [ck, cv] of Object.entries(d.parecer_tecnico_detalhes)) {
+          const rotulo = ck.replace(/^registro_/i, "").replace(/_/g, " ");
+          out.leilaoParagrafos.push(`${rotulo}: ${cv}.`);
+        }
+      }
+      if (d.remarketing_registros?.length) {
+        for (const rm of d.remarketing_registros) {
+          out.leilaoParagrafos.push(
+            `Remarketing — item ${rm.item || "—"}, organizador ${rm.organizador || "—"}, data ${rm.data_evento || "—"}.`
+          );
+        }
+      }
+      if (d.ia_situacao_analise) {
+        out.leilaoParagrafos.push(
+          `Análise por IA (situação): ${d.ia_situacao_analise}.`
         );
       }
       if (d.ia_danos.length) {
@@ -651,6 +994,14 @@ export function extrairLaudoTecnicoParaPdf(
                 (x) =>
                   `${x.local || "?"} — ${x.descricao || ""} (prob. ${x.probabilidade || "n/d"})`
               )
+              .join(" · ")
+        );
+      }
+      if (d.ia_pecas_danificadas?.length) {
+        out.leilaoParagrafos.push(
+          "Peças com indício (IA): " +
+            d.ia_pecas_danificadas
+              .map((x) => `${x.descricao || "?"} (${x.probabilidade || "n/d"})`)
               .join(" · ")
         );
       }
@@ -683,6 +1034,9 @@ export function extrairLaudoTecnicoParaPdf(
           `Banco / agente: ${banco}`,
           g.data_registro ? `Registro: ${g.data_registro}` : null,
           g.situacao ? `Situação: ${g.situacao}` : null,
+          g.registro_placa ? `Placa (registro): ${g.registro_placa}` : null,
+          g.registro_chassi ? `Chassi: ${g.registro_chassi}` : null,
+          g.registro_uf_placa ? `UF placa: ${g.registro_uf_placa}` : null,
         ]
           .filter(Boolean)
           .join(" · ")
@@ -698,8 +1052,13 @@ export function extrairLaudoTecnicoParaPdf(
           i.valor_aplicado && `Valor: ${i.valor_aplicado}`,
           i.local_infracao && `Local: ${i.local_infracao}`,
           i.numero_auto_infracao && `Auto: ${i.numero_auto_infracao}`,
+          i.tipo_auto_infracao && `Tipo auto: ${i.tipo_auto_infracao}`,
           i.data_hora_infracao && `Data infração: ${i.data_hora_infracao}`,
           i.municipio && `Município: ${i.municipio}`,
+          i.aplicacao_limite_permitido &&
+            `Limite: ${i.aplicacao_limite_permitido}`,
+          i.aplicacao_medicao_real && `Medição: ${i.aplicacao_medicao_real}`,
+          i.data_cadastramento && `Cadastro: ${i.data_cadastramento}`,
         ].filter(Boolean);
         out.renainfLinhas.push(partes.join(" · "));
       }
@@ -714,8 +1073,13 @@ export function extrairLaudoTecnicoParaPdf(
         i.valor_aplicado && `Valor: ${i.valor_aplicado}`,
         i.local_infracao && `Local: ${i.local_infracao}`,
         i.numero_auto_infracao && `Auto: ${i.numero_auto_infracao}`,
+        i.tipo_auto_infracao && `Tipo auto: ${i.tipo_auto_infracao}`,
         i.data_hora_infracao && `Data infração: ${i.data_hora_infracao}`,
         i.municipio && `Município: ${i.municipio}`,
+        i.aplicacao_limite_permitido &&
+          `Limite: ${i.aplicacao_limite_permitido}`,
+        i.aplicacao_medicao_real && `Medição: ${i.aplicacao_medicao_real}`,
+        i.data_cadastramento && `Cadastro: ${i.data_cadastramento}`,
       ].filter(Boolean);
       out.renainfLinhas.push(partes.join(" · "));
     }

@@ -14,11 +14,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Avaliador PRO",
+    default: "Avaliador PRO | Descubra se vale a pena comprar um carro",
     template: "%s · Avaliador PRO",
   },
   description:
-    "Viabilidade veicular B2B: teto de negociação, riscos e veredito com dados.",
+    "Calcule o preço máximo seguro e evite prejuízo ao comprar carros para revenda. Analise FIPE, riscos e margem em segundos.",
 };
 
 export default function RootLayout({

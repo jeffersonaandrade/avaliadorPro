@@ -6,6 +6,7 @@ import {
   dadosLeilaoSemConsultasPremium,
   extrairRiscosCarregadosDeDadosLeilao,
   mergeFlagsComConsultasPremium,
+  triPossuiRegistroConsultaPlaca,
 } from "@/lib/consultas-risco-premium";
 
 describe("dadosLeilaoSemConsultasPremium", () => {
@@ -19,6 +20,14 @@ describe("dadosLeilaoSemConsultasPremium", () => {
   it("retorna primitivos intactos", () => {
     expect(dadosLeilaoSemConsultasPremium(null)).toBeNull();
     expect(dadosLeilaoSemConsultasPremium([])).toEqual([]);
+  });
+});
+
+describe("triPossuiRegistroConsultaPlaca", () => {
+  it("classifica sim, nao e indisponivel", () => {
+    expect(triPossuiRegistroConsultaPlaca("sim")).toBe("sim");
+    expect(triPossuiRegistroConsultaPlaca("não")).toBe("nao");
+    expect(triPossuiRegistroConsultaPlaca("indisponível")).toBe("indisponivel");
   });
 });
 
@@ -51,7 +60,7 @@ describe("extrairRiscosCarregadosDeDadosLeilao", () => {
   });
 
   it("lê consultado_em e camelCase consultadoEm", () => {
-    const iso = "2026-04-01T12:00:00.000Z";
+    const iso = new Date(Date.now() - 2 * 86_400_000).toISOString();
     const a = extrairRiscosCarregadosDeDadosLeilao({
       consultas_premium: {
         leilao: { consultado_em: iso, constatado: true, resumo: "ok" },
@@ -64,7 +73,7 @@ describe("extrairRiscosCarregadosDeDadosLeilao", () => {
   });
 
   it("aceita constatado string tri-state da API (legado)", () => {
-    const iso = "2026-04-01T12:00:00.000Z";
+    const iso = new Date(Date.now() - 2 * 86_400_000).toISOString();
     const a = extrairRiscosCarregadosDeDadosLeilao({
       consultas_premium: {
         leilao: { consultado_em: iso, constatado: "sim", resumo: "ok" },

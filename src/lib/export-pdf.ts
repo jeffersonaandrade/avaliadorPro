@@ -19,6 +19,15 @@ const HTML2CANVAS_OPTS = {
   logging: false,
 } as const;
 
+/** JPEG evita falhas de decodificação PNG no jsPDF com fatias de canvas em alguns browsers. */
+const PDF_IMAGE_MIME = "image/jpeg" as const;
+const PDF_IMAGE_FORMAT = "JPEG" as const;
+const PDF_JPEG_QUALITY = 0.92;
+
+function canvasToPdfImageData(canvas: HTMLCanvasElement): string {
+  return canvas.toDataURL(PDF_IMAGE_MIME, PDF_JPEG_QUALITY);
+}
+
 function addCanvasStripesToPdf(
   pdf: jsPDF,
   canvas: HTMLCanvasElement,
@@ -26,13 +35,24 @@ function addCanvasStripesToPdf(
   usableWidthMm: number,
   usableHeightMm: number
 ): void {
+  if (canvas.width <= 0 || canvas.height <= 0) return;
+
   const imgWidthMm = usableWidthMm;
   const sliceHeightPx = (usableHeightMm * canvas.width) / imgWidthMm;
+  if (!Number.isFinite(sliceHeightPx) || sliceHeightPx <= 0) {
+    const imgData = canvasToPdfImageData(canvas);
+    const imgHeightMm = (canvas.height * imgWidthMm) / canvas.width;
+    pdf.addImage(imgData, PDF_IMAGE_FORMAT, marginMm, marginMm, imgWidthMm, imgHeightMm);
+    return;
+  }
+
   let sourceY = 0;
   let pageIndex = 0;
 
   while (sourceY < canvas.height) {
-    const thisSlicePx = Math.min(sliceHeightPx, canvas.height - sourceY);
+    const remaining = canvas.height - sourceY;
+    const slicePx = Math.floor(sliceHeightPx);
+    const thisSlicePx = Math.min(Math.max(1, slicePx || 1), remaining);
     const sliceCanvas = document.createElement("canvas");
     sliceCanvas.width = canvas.width;
     sliceCanvas.height = thisSlicePx;
@@ -49,10 +69,10 @@ function addCanvasStripesToPdf(
       canvas.width,
       thisSlicePx
     );
-    const sliceData = sliceCanvas.toDataURL("image/png");
+    const sliceData = canvasToPdfImageData(sliceCanvas);
     const sliceMmH = (thisSlicePx * imgWidthMm) / canvas.width;
     if (pageIndex > 0) pdf.addPage();
-    pdf.addImage(sliceData, "PNG", marginMm, marginMm, imgWidthMm, sliceMmH);
+    pdf.addImage(sliceData, PDF_IMAGE_FORMAT, marginMm, marginMm, imgWidthMm, sliceMmH);
     sourceY += thisSlicePx;
     pageIndex += 1;
   }
@@ -60,11 +80,23 @@ function addCanvasStripesToPdf(
 
 async function html2canvasForPdf(el: HTMLElement) {
   const { default: html2canvas } = await import("html2canvas");
-  return html2canvas(el, {
-    ...HTML2CANVAS_OPTS,
-    ignoreElements: (node) =>
-      node instanceof HTMLElement && node.classList.contains("pdf-exclude"),
-  });
+  const prevW = el.style.width;
+  const prevH = el.style.height;
+  el.style.width = `${el.scrollWidth}px`;
+  el.style.height = `${el.scrollHeight}px`;
+  try {
+    return await html2canvas(el, {
+      scale: HTML2CANVAS_OPTS.scale,
+      useCORS: HTML2CANVAS_OPTS.useCORS,
+      backgroundColor: HTML2CANVAS_OPTS.backgroundColor,
+      logging: HTML2CANVAS_OPTS.logging,
+      ignoreElements: (node) =>
+        node instanceof HTMLElement && node.classList.contains("pdf-exclude"),
+    });
+  } finally {
+    el.style.width = prevW;
+    el.style.height = prevH;
+  }
 }
 
 export async function exportHtmlNodeToPdf(
@@ -92,11 +124,15 @@ export async function exportHtmlNodeToPdf(
 
   if (chunks.length === 0) {
     const canvas = await html2canvasForPdf(element);
+    if (canvas.width <= 0 || canvas.height <= 0) {
+      pdf.save(fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`);
+      return;
+    }
     const imgWidthMm = usableWidth;
     const imgHeightMm = (canvas.height * imgWidthMm) / canvas.width;
-    const imgData = canvas.toDataURL("image/png");
+    const imgData = canvasToPdfImageData(canvas);
     if (imgHeightMm <= usableHeight) {
-      pdf.addImage(imgData, "PNG", margin, margin, imgWidthMm, imgHeightMm);
+      pdf.addImage(imgData, PDF_IMAGE_FORMAT, margin, margin, imgWidthMm, imgHeightMm);
     } else {
       addCanvasStripesToPdf(pdf, canvas, margin, usableWidth, usableHeight);
     }
@@ -113,6 +149,9 @@ export async function exportHtmlNodeToPdf(
       }
 
       const canvas = await html2canvasForPdf(chunk);
+      if (canvas.width <= 0 || canvas.height <= 0) {
+        continue;
+      }
       const hMm = (canvas.height * usableWidth) / canvas.width;
 
       if (hMm <= usableHeight) {
@@ -122,8 +161,8 @@ export async function exportHtmlNodeToPdf(
         }
         hasPage = true;
         pdf.addImage(
-          canvas.toDataURL("image/png"),
-          "PNG",
+          canvasToPdfImageData(canvas),
+          PDF_IMAGE_FORMAT,
           margin,
           cursorY,
           usableWidth,

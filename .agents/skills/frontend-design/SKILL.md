@@ -40,3 +40,77 @@ Interpret creatively and make unexpected choices that feel genuinely designed fo
 **IMPORTANT**: Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
 
 Remember: Claude is capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+
+## Decision-First Design (CRITICAL)
+
+This interface is NOT decorative.
+
+It must answer in under 3 seconds:
+
+- Should I buy this?
+- What is the maximum price?
+- What is the risk?
+
+Prioritize:
+
+1. Decision clarity
+2. Financial impact visibility
+3. Fast scanning
+
+Deprioritize:
+
+- Experimental layouts
+- Artistic typography
+- Visual noise
+
+## Mobile Reality Constraints
+
+Users operate in:
+
+- sunlight
+- movement
+- time pressure
+
+Therefore:
+
+- High contrast is mandatory
+- Text must be readable at arm's length
+- Tap targets must be large
+- No reliance on subtle UI cues
+
+## Financial UX Rules
+
+Numbers are the product.
+
+- Never break currency values across lines
+- Always show 2 decimal places
+- Use tabular numbers when possible
+- Prioritize price visibility over labels
+
+Bad:
+"Preço máximo sugerido para análise..."
+
+Good:
+"Pague no máximo: R$ 18.801,30"
+
+## HARD RESTRICTIONS
+
+NEVER:
+
+- Use decorative fonts that harm readability
+- Break monetary values
+- Hide key decisions behind interactions
+- Overuse animations
+- Add visual complexity that slows understanding
+
+## Visual Hierarchy Rule
+
+The UI must follow:
+
+1. Decision (Buy / Don't buy)
+2. Maximum price
+3. Risk
+4. Strategy
+5. Details (hidden)
+
+If anything competes with these, remove it.

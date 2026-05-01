@@ -27,6 +27,14 @@ function rec(v: unknown): Record<string, unknown> | null {
   return v as Record<string, unknown>;
 }
 
+/** Rótulo legível para chaves do parecer técnico (ex.: registro_frota_locadora). */
+function rotuloChaveParecerLeilao(chave: string): string {
+  return chave
+    .replace(/^registro_/i, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function lerDossieDoItem(
   tipo: TipoConsultaRiscoPremium,
   item: Record<string, unknown> | null
@@ -142,10 +150,150 @@ function BlocoLeilao({ d }: { d: LeilaoPrimeDossie }) {
                   Data do leilão:{" "}
                   <span className="font-medium">{r.data_leilao || "—"}</span>
                 </p>
+                {(r.veiculo_placa ||
+                  r.chassi_mascarado ||
+                  r.renavam ||
+                  r.ano_fabricacao ||
+                  r.ano_modelo ||
+                  r.segmento ||
+                  r.sub_segmento ||
+                  r.numero_motor) ? (
+                  <dl className="mt-2 grid gap-1 border-t border-slate-100 pt-2 text-[11px] text-slate-600">
+                    {r.veiculo_placa ? (
+                      <div className="flex flex-wrap gap-x-2">
+                        <dt className="font-medium text-slate-500">Placa</dt>
+                        <dd className="font-mono">{r.veiculo_placa}</dd>
+                      </div>
+                    ) : null}
+                    {r.chassi_mascarado ? (
+                      <div className="flex flex-wrap gap-x-2">
+                        <dt className="font-medium text-slate-500">Classi</dt>
+                        <dd className="font-mono break-all">{r.chassi_mascarado}</dd>
+                      </div>
+                    ) : null}
+                    {r.renavam ? (
+                      <div className="flex flex-wrap gap-x-2">
+                        <dt className="font-medium text-slate-500">Renavam</dt>
+                        <dd className="font-mono">{r.renavam}</dd>
+                      </div>
+                    ) : null}
+                    {(r.ano_fabricacao || r.ano_modelo) ? (
+                      <div className="flex flex-wrap gap-x-2">
+                        <dt className="font-medium text-slate-500">Ano</dt>
+                        <dd>
+                          {r.ano_fabricacao || "—"}
+                          {r.ano_modelo ? ` / modelo ${r.ano_modelo}` : ""}
+                        </dd>
+                      </div>
+                    ) : null}
+                    {(r.segmento || r.sub_segmento) ? (
+                      <div className="flex flex-wrap gap-x-2">
+                        <dt className="font-medium text-slate-500">Segmento</dt>
+                        <dd>
+                          {[r.segmento, r.sub_segmento].filter(Boolean).join(" · ")}
+                        </dd>
+                      </div>
+                    ) : null}
+                    {r.numero_motor ? (
+                      <div className="flex flex-wrap gap-x-2">
+                        <dt className="font-medium text-slate-500">Motor</dt>
+                        <dd className="font-mono break-all">{r.numero_motor}</dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                ) : null}
               </li>
             ))}
           </ul>
         </div>
+      ) : null}
+      {d.sinistros_acidentes_possui_registro ? (
+        <div className="rounded-xl border border-amber-200/80 bg-amber-50/40 px-3 py-2.5 text-xs text-amber-950">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-amber-900/90">
+            Sinistros e acidentes (fonte)
+          </p>
+          <p className="mt-1 font-medium capitalize">
+            {d.sinistros_acidentes_possui_registro}
+          </p>
+        </div>
+      ) : null}
+      {d.parecer_tecnico_parecer ||
+      (d.parecer_tecnico_detalhes &&
+        Object.keys(d.parecer_tecnico_detalhes).length > 0) ? (
+        <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+            Parecer técnico
+          </p>
+          {d.parecer_tecnico_parecer ? (
+            <p className="mt-2 text-sm font-semibold capitalize text-slate-900">
+              {d.parecer_tecnico_parecer}
+            </p>
+          ) : null}
+          {d.parecer_tecnico_detalhes ? (
+            <ul className="mt-2 space-y-1 text-[11px] text-slate-700">
+              {Object.entries(d.parecer_tecnico_detalhes).map(([ck, cv]) => (
+                <li key={ck}>
+                  <span className="font-medium text-slate-600">
+                    {rotuloChaveParecerLeilao(ck)}:
+                  </span>{" "}
+                  <span className="capitalize">{cv}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+      {d.remarketing_registros && d.remarketing_registros.length > 0 ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+            Remarketing (eventos)
+          </p>
+          <ul className="mt-2 space-y-2 text-xs text-slate-800">
+            {d.remarketing_registros.map((rm, idx) => (
+              <li
+                key={`${rm.item}-${idx}`}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm"
+              >
+                <p className="font-semibold">
+                  {rm.organizador || "Organizador —"}{" "}
+                  {rm.data_evento ? (
+                    <span className="font-normal text-slate-600">
+                      · {rm.data_evento}
+                    </span>
+                  ) : null}
+                </p>
+                {rm.item ? (
+                  <p className="mt-1 text-slate-600">
+                    Item: <span className="font-mono">{rm.item}</span>
+                  </p>
+                ) : null}
+                {(rm.condicao_geral_veiculo ||
+                  rm.condicao_motor ||
+                  rm.condicao_cambio) ? (
+                  <p className="mt-1 text-[11px] text-slate-600">
+                    {[
+                      rm.condicao_geral_veiculo
+                        ? `Geral: ${rm.condicao_geral_veiculo}`
+                        : null,
+                      rm.condicao_motor ? `Motor: ${rm.condicao_motor}` : null,
+                      rm.condicao_cambio
+                        ? `Câmbio: ${rm.condicao_cambio}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {d.ia_situacao_analise ? (
+        <p className="text-[11px] font-medium text-violet-900/90">
+          Situação da análise por IA:{" "}
+          <span className="capitalize">{d.ia_situacao_analise}</span>
+        </p>
       ) : null}
       {d.ia_danos.length > 0 ? (
         <div className="rounded-xl border border-violet-200/80 bg-violet-50/50 p-3">
@@ -161,6 +309,25 @@ function BlocoLeilao({ d }: { d: LeilaoPrimeDossie }) {
                 <span className="tabular-nums text-violet-800">
                   ({x.probabilidade || "prob. n/d"})
                 </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {d.ia_pecas_danificadas && d.ia_pecas_danificadas.length > 0 ? (
+        <div className="rounded-xl border border-violet-200/80 bg-violet-50/40 p-3">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-violet-900">
+            Peças com indício (IA)
+          </p>
+          <ul className="mt-2 space-y-1.5 text-xs text-violet-950">
+            {d.ia_pecas_danificadas.map((x, idx) => (
+              <li key={idx}>
+                <span className="font-semibold">{x.descricao || "Peça"}</span>
+                {x.probabilidade ? (
+                  <span className="ms-1 tabular-nums text-violet-800">
+                    ({x.probabilidade})
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -247,6 +414,10 @@ function BlocoRenainf({ d }: { d: RenainfDossie }) {
       <p className="text-[10px] font-bold uppercase tracking-wide text-orange-900">
         Total estimado das multas
       </p>
+      <p className="mt-1 text-[10px] leading-relaxed text-orange-900/85">
+        A fonte lista débitos em aberto ou já executados (multa emitida). Confirme
+        pagamento e recurso diretamente com o órgão autuador.
+      </p>
       <p className="text-xl font-black tabular-nums text-orange-950">
         {formatarMoedaBRL(d.valor_total_reais)}
       </p>
@@ -287,6 +458,53 @@ function BlocoRenainf({ d }: { d: RenainfDossie }) {
                   <span className="font-medium">Município:</span> {inf.municipio}
                 </p>
               ) : null}
+              {inf.tipo_auto_infracao ? (
+                <p className="mt-1 font-mono text-[11px] text-orange-900/80">
+                  <span className="font-sans font-medium">Tipo auto:</span>{" "}
+                  {inf.tipo_auto_infracao}
+                </p>
+              ) : null}
+              {inf.aplicacao_unidade_medida ||
+              inf.aplicacao_limite_permitido ||
+              inf.aplicacao_medicao_real ? (
+                <p className="mt-2 border-t border-orange-100/80 pt-2 text-orange-900/90">
+                  <span className="font-medium">Medição / aplicação:</span>{" "}
+                  {[
+                    inf.aplicacao_unidade_medida &&
+                      `Unidade: ${inf.aplicacao_unidade_medida}`,
+                    inf.aplicacao_limite_permitido &&
+                      `Limite: ${inf.aplicacao_limite_permitido}`,
+                    inf.aplicacao_medicao_considerada &&
+                      `Considerada: ${inf.aplicacao_medicao_considerada}`,
+                    inf.aplicacao_medicao_real &&
+                      `Real: ${inf.aplicacao_medicao_real}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              ) : null}
+              {inf.data_cadastramento || inf.data_notificacao || inf.data_emissao_penalidade ? (
+                <div className="mt-1 space-y-0.5 text-[11px] text-orange-900/80">
+                  {inf.data_cadastramento ? (
+                    <p>
+                      <span className="font-medium">Cadastramento:</span>{" "}
+                      {inf.data_cadastramento.trim()}
+                    </p>
+                  ) : null}
+                  {inf.data_notificacao ? (
+                    <p>
+                      <span className="font-medium">Notificação:</span>{" "}
+                      {inf.data_notificacao.trim()}
+                    </p>
+                  ) : null}
+                  {inf.data_emissao_penalidade ? (
+                    <p>
+                      <span className="font-medium">Emissão penalidade:</span>{" "}
+                      {inf.data_emissao_penalidade.trim()}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -297,11 +515,17 @@ function BlocoRenainf({ d }: { d: RenainfDossie }) {
 
 function BlocoGravame({ d }: { d: GravameDossie }) {
   const cnpj = d.agente_financeiro_cnpj?.trim();
+  const placaReg = d.registro_placa?.trim();
+  const chassi = d.registro_chassi?.trim();
+  const ufPlaca = d.registro_uf_placa?.trim();
   if (
     !d.agente_financeiro_nome &&
     !cnpj &&
     !d.data_registro &&
-    !d.situacao
+    !d.situacao &&
+    !placaReg &&
+    !chassi &&
+    !ufPlaca
   ) {
     return null;
   }
@@ -330,6 +554,30 @@ function BlocoGravame({ d }: { d: GravameDossie }) {
           <p className="mt-1 text-slate-700">
             <span className="font-medium">Situação:</span> {d.situacao || "—"}
           </p>
+          {placaReg || chassi || ufPlaca ? (
+            <div className="mt-3 border-t border-slate-100 pt-2 text-slate-600">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                Veículo no registro
+              </p>
+              {placaReg ? (
+                <p className="mt-1 font-mono text-[11px]">
+                  <span className="font-sans font-medium text-slate-600">Placa:</span>{" "}
+                  {placaReg}
+                </p>
+              ) : null}
+              {chassi ? (
+                <p className="mt-1 font-mono text-[11px]">
+                  <span className="font-sans font-medium text-slate-600">Chassi:</span>{" "}
+                  {chassi}
+                </p>
+              ) : null}
+              {ufPlaca ? (
+                <p className="mt-1">
+                  <span className="font-medium">UF da placa:</span> {ufPlaca}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -350,12 +598,19 @@ export function DossieEvidenciasPremium({
 
   if (dossie.tipo === "leilao") {
     const omitirImg = omitirCarregarImagensConsultaPremium();
+    const detPar = dossie.dados.parecer_tecnico_detalhes;
     const tem =
       dossie.dados.registros.length > 0 ||
       dossie.dados.ia_danos.length > 0 ||
       (!omitirImg && dossie.dados.fotos_remarketing.length > 0) ||
       Boolean(dossie.dados.classificacao_letra) ||
-      Boolean(dossie.dados.classificacao_descricao);
+      Boolean(dossie.dados.classificacao_descricao) ||
+      Boolean(dossie.dados.sinistros_acidentes_possui_registro) ||
+      Boolean(dossie.dados.parecer_tecnico_parecer) ||
+      Boolean(detPar && Object.keys(detPar).length > 0) ||
+      Boolean(dossie.dados.remarketing_registros?.length) ||
+      Boolean(dossie.dados.ia_situacao_analise) ||
+      Boolean(dossie.dados.ia_pecas_danificadas?.length);
     if (!tem) return null;
     return <BlocoLeilao d={dossie.dados} />;
   }

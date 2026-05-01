@@ -56,16 +56,31 @@ export type RiscosCarregadosMap = Partial<
 /**
  * API Consultar Placa v2: `possui_registro` / `possui_gravame` vêm como
  * `"sim" | "nao" | "indisponivel"` (e variantes com acento).
- * Apenas `"sim"` deve contar como risco constatado para veredito/UI.
  */
-export function constatadoTriStateConsultaPlaca(v: unknown): boolean {
-  if (typeof v !== "string") return false;
+export type TriPossuiRegistroConsultaPlaca =
+  | "sim"
+  | "nao"
+  | "indisponivel"
+  | "desconhecido";
+
+export function triPossuiRegistroConsultaPlaca(
+  v: unknown
+): TriPossuiRegistroConsultaPlaca {
+  if (typeof v !== "string") return "desconhecido";
   const t = v
     .trim()
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
-  return t === "sim";
+  if (t === "sim") return "sim";
+  if (t === "nao") return "nao";
+  if (t === "indisponivel") return "indisponivel";
+  return "desconhecido";
+}
+
+/** Apenas `"sim"` conta como risco constatado para veredito/UI. */
+export function constatadoTriStateConsultaPlaca(v: unknown): boolean {
+  return triPossuiRegistroConsultaPlaca(v) === "sim";
 }
 
 /** Liga tipo de consulta paga ao fator de ajuste de FIPE na UI. */

@@ -5,6 +5,10 @@ import {
   type ResumoRoiConfiabilidade,
 } from "@/lib/reconciliacao-auditoria";
 import { supabaseAdmin } from "@/lib/supabase";
+import {
+  colunasSandboxDbRow,
+  FILTRO_AUDITORIA_APENAS_ORGANICO,
+} from "@/lib/sandbox-integrity";
 
 export type EventoAuditoriaConsultaNome =
   | "CONSULTA_INICIO"
@@ -12,7 +16,17 @@ export type EventoAuditoriaConsultaNome =
   | "CONSULTA_ERRO"
   | "CONSULTA_TIMEOUT"
   | "CACHE_HIT"
-  | "CREDITO_CONSUMIDO";
+  /** Chamada HTTP externa com custo ou impacto em cota (após resposta recebida). */
+  | "API_CALL"
+  | "CREDITO_CONSUMIDO"
+  /** Consumo da cota mensal de consultas de placa (FIPE / persistência). */
+  | "FIPE_CONSUMIDO"
+  /** Consulta FIPE além da cota mensal (cobrança por uso; `valor_evitar_perda` = valor cobrado). */
+  | "FIPE_EXCEDENTE_CONSUMIDO"
+  /** Compra de créditos premium avulsos (billing futuro; hoje pode exigir env). */
+  | "COMPRA_CREDITO"
+  /** Crédito em saldo pré-pago FIPE (ex.: sandbox ou gateway futuro). */
+  | "SALDO_PRE_PAGO_CREDITADO";
 
 /**
  * Persistência opcional em `consultas_auditoria_eventos` (Supabase).
@@ -57,6 +71,7 @@ export async function persistirEventoConsultaAuditoriaDb(input: {
   const blindFalhou =
     input.blindagemPersistenciaFalhouAposDebito === true ? true : false;
 
+  const sandboxCols = colunasSandboxDbRow();
   const baseRow = {
     cliente_id,
     placa: input.placa,
@@ -66,9 +81,10 @@ export async function persistirEventoConsultaAuditoriaDb(input: {
     valor_evitar_perda: input.valorEvitarPerda ?? null,
     tipo_risco_detectado: input.tipoRiscoDetectado ?? null,
     request_id: input.requestId?.trim() || null,
+    ...sandboxCols,
   };
 
-  /** Colunas exigem DDL em `database.sql`; só em `CREDITO_CONSUMIDO` para não quebrar inserts legados. */
+  /** Colunas extras exigem DDL em `database.sql`. */
   const row =
     input.evento === "CREDITO_CONSUMIDO"
       ? {
@@ -96,6 +112,7 @@ type LinhaCreditoMesDb = {
   detalhe: string | null;
   persistencia_falhou_apos_debito?: boolean | null;
   blindagem_persistencia_falhou_apos_debito?: boolean | null;
+  is_sandbox?: boolean | null;
 };
 
 async function buscarLinhasCreditoConsumidoMesUtc(
@@ -109,9 +126,10 @@ async function buscarLinhasCreditoConsumidoMesUtc(
   let q = supabaseAdmin
     .from("consultas_auditoria_eventos")
     .select(
-      "valor_evitar_perda, detalhe, persistencia_falhou_apos_debito, blindagem_persistencia_falhou_apos_debito"
+      "valor_evitar_perda, detalhe, persistencia_falhou_apos_debito, blindagem_persistencia_falhou_apos_debito, is_sandbox"
     )
     .eq("evento", "CREDITO_CONSUMIDO")
+    .or(FILTRO_AUDITORIA_APENAS_ORGANICO)
     .gte("criado_em", inicio.toISOString());
 
   const id = (clienteId ?? "").trim();

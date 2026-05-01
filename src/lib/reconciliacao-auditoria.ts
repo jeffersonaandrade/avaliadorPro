@@ -11,6 +11,8 @@ export type LinhaEventoAuditoriaDb = {
   request_id: string | null;
   persistencia_falhou_apos_debito?: boolean | null;
   blindagem_persistencia_falhou_apos_debito?: boolean | null;
+  /** true: evento de mock — excluído de ROI/reconciliação orgânica no app. */
+  is_sandbox?: boolean | null;
 };
 
 /** Substrings em `detalhe` que marcam `CREDITO_CONSUMIDO` como ROI suspeito (legado / explícito). */
@@ -23,6 +25,7 @@ export type LinhaCreditoRoiFlags = {
   detalhe: string | null;
   persistencia_falhou_apos_debito?: boolean | null;
   blindagem_persistencia_falhou_apos_debito?: boolean | null;
+  is_sandbox?: boolean | null;
 };
 
 /**
@@ -71,6 +74,7 @@ export function acumularResumoRoiCreditoPorLinhas(
   let nValidas = 0;
   let nSuspeitas = 0;
   for (const row of linhas) {
+    if (row.is_sandbox === true) continue;
     const v = valorEvitarPerdaParaSoma(row.valor_evitar_perda);
     if (creditoConsumidoRoiSuspeito(row)) {
       valorSuspeito += v;
@@ -102,6 +106,7 @@ export type KpisConciliacao = {
   dDebito: number;
   eFalha: number;
   cacheHit: number;
+  apiCall: number;
   taxaSucessoPct: number;
   alertaDebitoMaiorQueSucesso: boolean;
 };
@@ -112,6 +117,7 @@ export function calcularKpisConciliacao(contagens: Record<string, number>): Kpis
   const eFalha =
     (contagens["CONSULTA_ERRO"] ?? 0) + (contagens["CONSULTA_TIMEOUT"] ?? 0);
   const cacheHit = contagens["CACHE_HIT"] ?? 0;
+  const apiCall = contagens["API_CALL"] ?? 0;
   const denominador = cSucesso + eFalha;
   const taxaSucessoPct =
     denominador > 0 ? Math.round((cSucesso / denominador) * 1000) / 10 : 0;
@@ -120,6 +126,7 @@ export function calcularKpisConciliacao(contagens: Record<string, number>): Kpis
     dDebito,
     eFalha,
     cacheHit,
+    apiCall,
     taxaSucessoPct,
     alertaDebitoMaiorQueSucesso: dDebito > cSucesso,
   };
@@ -272,6 +279,7 @@ export function rotuloClassificacaoGrupo(c: GrupoTransacao["classificacao"]): st
 export function agregarPorCliente(linhas: LinhaEventoAuditoriaDb[]): AgregadoCliente[] {
   const map = new Map<string, AgregadoCliente>();
   for (const e of linhas) {
+    if (e.is_sandbox === true) continue;
     const id = (e.cliente_id ?? "").trim();
     if (!id) continue;
     let a = map.get(id);
@@ -302,6 +310,9 @@ export function agregarPorCliente(linhas: LinhaEventoAuditoriaDb[]): AgregadoCli
         break;
       case "CONSULTA_INICIO":
         a.inicios += 1;
+        break;
+      case "FIPE_EXCEDENTE_CONSUMIDO":
+        a.somaValorEvitarPerda += valorEvitarPerdaParaSoma(e.valor_evitar_perda);
         break;
       default:
         break;

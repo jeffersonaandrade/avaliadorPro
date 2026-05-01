@@ -4,6 +4,7 @@ import {
   isResultadoVeiculoModoDemonstracao,
   obterPlacaVeiculoDemonstracao,
   PLACA_VEICULO_DEMONSTRACAO_PADRAO,
+  resolverPlacaParaRequisicaoConsultarPlacaApi,
 } from "@/lib/placa-teste-demo";
 
 afterEach(() => {
@@ -43,5 +44,51 @@ describe("placa-teste-demo", () => {
     expect(isResultadoVeiculoModoDemonstracao(true, "XYZ9999")).toBe(true);
     expect(isResultadoVeiculoModoDemonstracao(false, "AAA0000")).toBe(true);
     expect(isResultadoVeiculoModoDemonstracao(false, "ABC1234")).toBe(false);
+  });
+
+  describe("resolverPlacaParaRequisicaoConsultarPlacaApi", () => {
+    it("USE_MOCKS literal 'true' troca pela placa de demonstração (env ou AAA0000)", () => {
+      vi.stubEnv("NEXT_PUBLIC_USE_MOCKS", "true");
+      vi.stubEnv("NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO", "BBB1B34");
+      expect(resolverPlacaParaRequisicaoConsultarPlacaApi("BRASIL22")).toBe(
+        "BBB1B34"
+      );
+    });
+
+    it("USE_MOCKS true com env vazio usa AAA0000", () => {
+      vi.stubEnv("NEXT_PUBLIC_USE_MOCKS", "true");
+      vi.stubEnv("NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO", "");
+      expect(resolverPlacaParaRequisicaoConsultarPlacaApi("XYZ9999")).toBe(
+        "AAA0000"
+      );
+    });
+
+    it("USE_MOCKS não é o literal 'true' — não substitui (ex. True maiúsculo)", () => {
+      vi.stubEnv("NEXT_PUBLIC_USE_MOCKS", "True");
+      vi.stubEnv("NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO", "AAA0000");
+      expect(resolverPlacaParaRequisicaoConsultarPlacaApi("ABC1D23")).toBe(
+        "ABC1D23"
+      );
+    });
+
+    it("USE_MOCKS false mantém placa original", () => {
+      vi.stubEnv("NEXT_PUBLIC_USE_MOCKS", "false");
+      vi.stubEnv("NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO", "AAA0000");
+      expect(resolverPlacaParaRequisicaoConsultarPlacaApi("ABC1D23")).toBe(
+        "ABC1D23"
+      );
+    });
+
+    it("NODE_ENV production + USE_MOCKS true não substitui placa (trava anti-PRD)", () => {
+      const err = vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.stubEnv("NEXT_PUBLIC_USE_MOCKS", "true");
+      vi.stubEnv("NEXT_PUBLIC_AVALIADOR_PLACA_DEMONSTRACAO", "AAA0000");
+      vi.stubEnv("NODE_ENV", "production");
+      expect(resolverPlacaParaRequisicaoConsultarPlacaApi("BRASIL22")).toBe(
+        "BRASIL22"
+      );
+      expect(err).toHaveBeenCalled();
+      err.mockRestore();
+    });
   });
 });

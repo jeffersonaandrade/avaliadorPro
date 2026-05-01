@@ -32,6 +32,7 @@ import {
   mergeFlagsComConsultasPremium,
 } from "@/lib/consultas-risco-premium";
 import { isPublicDemoMocksMode } from "@/lib/demo-mocks";
+import { analisarTendenciaFipe, gerarInsightFipe } from "@/lib/fipe-tendencia";
 import { isPlacaVeiculoDemonstracao } from "@/lib/placa-teste-demo";
 import {
   calcularValorEvitarPerdaReais,
@@ -58,6 +59,7 @@ import {
 import { AlertasDecisao } from "./AlertasDecisao";
 import { AlertasHistoricoVeiculo } from "./AlertasHistoricoVeiculo";
 import { BlocoDecisaoMercadoPendente } from "./BlocoDecisao";
+import { BlindagemConversionCard } from "@/components/blindagem/BlindagemConversionCard";
 import { CalculationDetailsAccordion } from "./CalculationDetailsAccordion";
 import { CardEstrategiaNegociacao } from "./CardEstrategiaNegociacao";
 import { CardSimulacaoBase } from "./CardSimulacaoBase";
@@ -78,7 +80,6 @@ import { ModalConsultaRiscoPremium } from "./ModalConsultaRiscoPremium";
 import { PainelValoresMercado } from "./PainelValoresMercado";
 import { RefinementPanel } from "./RefinementPanel";
 import { ResumoDecisao } from "./ResumoDecisao";
-import { RiskConversionBlock } from "./RiskConversionBlock";
 import { arredondarReais2Ui } from "./ui-utils";
 
 export function FormularioViabilidade({
@@ -237,6 +238,22 @@ export function FormularioViabilidade({
     extrairFlagsHistoricoVeiculo(dadosLeilaoSemConsultasPremium(dadosLeilaoJson)),
     riscosCarregados
   );
+  const tendenciaFipeMercado = useMemo(() => {
+    const root =
+      dadosLeilaoJson && typeof dadosLeilaoJson === "object"
+        ? (dadosLeilaoJson as Record<string, unknown>)
+        : null;
+    const historico = root?.historico_fipe_12m;
+    if (!historico || typeof historico !== "object") return null;
+    const analise = analisarTendenciaFipe(
+      historico as Record<string, unknown>
+    );
+    if (!analise) return null;
+    return {
+      ...analise,
+      insight: gerarInsightFipe(analise.tendencia, analise.variacaoPercentual),
+    };
+  }, [dadosLeilaoJson]);
   const temRiscoEstrutural =
     flagsHistorico.leilao ||
     flagsHistorico.sinistro ||
@@ -509,7 +526,7 @@ export function FormularioViabilidade({
 
   return (
     <div
-      className="relative mx-auto min-w-0 max-w-full space-y-8 overflow-hidden rounded-3xl border border-slate-200/90 bg-gradient-to-b from-slate-50/90 to-white p-6 shadow-xl shadow-slate-200/30 sm:max-w-3xl sm:space-y-10 sm:p-8"
+      className="relative mx-auto min-w-0 max-w-md space-y-8 overflow-hidden rounded-3xl border border-slate-200/90 bg-gradient-to-b from-slate-50/90 to-white px-4 py-6 shadow-xl shadow-slate-200/30 sm:max-w-3xl sm:space-y-10 sm:px-8 sm:py-8"
       data-testid="formulario-viabilidade"
     >
       {!planoAtivo ? (
@@ -525,7 +542,7 @@ export function FormularioViabilidade({
           </p>
           <Link
             href="/#planos"
-            className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-md transition hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+            className="inline-flex min-h-12 items-center justify-center rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-md transition hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
           >
             Assinar plano
           </Link>
@@ -533,21 +550,21 @@ export function FormularioViabilidade({
       ) : null}
 
       <div className={!planoAtivo ? "pointer-events-none select-none opacity-40" : undefined}>
-      <div className="flex min-w-0 flex-col gap-2">
+      <div className="flex min-w-0 flex-col gap-1">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700">
             <Calculator className="size-6" strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h3 className="text-lg font-bold tracking-tight text-slate-900">
-              Ferramenta de decisão
+            <h3 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">
+              Sua decisão em reais
             </h3>
-            <p className="text-xs text-slate-600">
+            <p className="text-sm leading-relaxed text-slate-600">
               {contextoFipeMercadoAtivo
-                ? "Decisão em destaque · refine custos abaixo · detalhes técnicos no final"
+                ? "Você decide aqui se compra ou não compra."
                 : fipeDisponivelNaConsulta
-                  ? "Refine custos e meta; inclua a referência de mercado na decisão para ver veredito e limite sugerido."
-                  : "Refine custos e meta; quando a referência vier na análise, inclua na decisão para ver limite e ofertas."}
+                  ? "Ative FIPE na decisão para ver preço máximo agora."
+                  : "Sem FIPE válida, não dá para calcular o preço máximo seguro."}
             </p>
           </div>
         </div>
@@ -556,7 +573,7 @@ export function FormularioViabilidade({
       {!fipeDisponivelNaConsulta ? <BlocoDecisaoMercadoPendente /> : null}
 
       {fipeDisponivelNaConsulta && contextoFipeMercadoAtivo ? (
-        <div className="mt-4 space-y-10 sm:space-y-12">
+        <div className="mt-4 space-y-8 sm:space-y-10">
           <DecisionCard
             contextoAtivo={contextoFipeMercadoAtivo}
             blindagemAtiva={blindagemAtiva}
@@ -571,15 +588,24 @@ export function FormularioViabilidade({
               semaforoCompleto ? resultado.margemRealProjecaoPct : null
             }
             tetoNegociacaoReais={temNegociacao ? ofertaMaximaExibicao : null}
-            baseVendaExibida={baseVenda}
             perdaHistoricoReais={perdaHistoricoReais}
+            riscosResumo={[
+              flagsHistorico.leilao ? "Leilão" : "",
+              flagsHistorico.sinistro ? "Sinistro" : "",
+              flagsHistorico.roubo ? "Roubo" : "",
+              flagsHistorico.gravame ? "Gravame" : "",
+            ].filter(Boolean)}
+            tendenciaMercado={tendenciaFipeMercado}
           />
-          <RiskConversionBlock
+          <BlindagemConversionCard
             contextoAtivo={contextoFipeMercadoAtivo}
             blindagemAtiva={blindagemAtiva}
-            estimativaPerdaIndicativaReais={estimativaPerdaIndicativaReais}
+            vereditoUi={vereditoUi}
+            temRiscoEstrutural={temRiscoEstrutural}
             podeAtivarPorSaldo={sandboxPremiumAviso || creditosPremium > 0}
             consultandoBlindagem={consultandoBlindagem}
+            riscoEstimadoReais={estimativaPerdaIndicativaReais}
+            perdaEvitadaReais={perdaHistoricoReais}
             onAbrirModalBlindagem={() => {
               setErroConsultaRisco(null);
               setModalBlindagemAberta(true);

@@ -4,7 +4,7 @@ import { TrendingUp } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { obterValorProtegidoMesAction } from "@/actions/metricas-valor-actions";
-import { formatarMoedaBRL } from "@/lib/viabilidade";
+import { PriceInline } from "@/components/ui/PriceDisplay";
 
 type Props = {
   identificadorCliente: string;
@@ -67,9 +67,10 @@ export function ValorProtegidoMesBanner({
         </p>
         <p className="mt-1 text-sm font-semibold leading-snug text-slate-800">
           Você já evitou{" "}
-          <span className="font-mono text-base font-black tabular-nums text-emerald-950">
-            {formatarMoedaBRL(total)}
-          </span>{" "}
+          <PriceInline
+            valor={total}
+            className="font-mono text-base font-black text-emerald-950"
+          />{" "}
           em referência de mercado degradada por risco — apenas operações com
           persistência confirmada após o débito.
         </p>

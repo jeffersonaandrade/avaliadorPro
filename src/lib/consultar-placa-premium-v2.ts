@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   constatadoTriStateConsultaPlaca,
+  triPossuiRegistroConsultaPlaca,
   type TipoConsultaRiscoPremium,
 } from "@/lib/consultas-risco-premium";
 import { parsearRenainfDossie } from "@/lib/api-v2/parsers";
@@ -10,6 +11,9 @@ import {
   FETCH_TIMEOUT_MS_LEILAO_PRIME,
   FETCH_TIMEOUT_MS_RENAINF,
 } from "@/lib/fetch-timeout-ms";
+import { getConsultarPlacaAuthHeader } from "@/lib/consultar-placa";
+import { envNextPublicUseMocksAtivo } from "@/lib/demo-mocks";
+import { resolverPlacaParaRequisicaoConsultarPlacaApi } from "@/lib/placa-teste-demo";
 import { formatarMoedaBRL } from "@/lib/viabilidade";
 
 const BASE = "https://api.consultarplaca.com.br";
@@ -26,14 +30,15 @@ export const PATHS_PREMIUM_V2: Record<TipoConsultaRiscoPremium, string> = {
   renainf: "/v2/consultarRegistrosInfracoesRenainf",
 };
 
-export function obterTokenBearerConsultarPlacaV2(): string {
-  const t = process.env.API_CONSULTAR_PLACA_TOKEN?.trim();
-  if (!t) {
-    throw new Error(
-      "Defina API_CONSULTAR_PLACA_TOKEN no servidor (Bearer Consultar Placa v2)."
-    );
-  }
-  return t;
+/**
+ * Cabeçalho `Authorization` para GET nas rotas premium v2.
+ * **Bearer** (`API_CONSULTAR_PLACA_TOKEN`) tem precedência; senão **Basic** com
+ * `CONSULTAR_PLACA_API_EMAIL` + `CONSULTAR_PLACA_API_KEY` (mesmo contrato do `/v2/consultarPlaca`).
+ */
+export function obterCabecalhoAuthorizationConsultarPlacaPremium(): string {
+  const bearer = process.env.API_CONSULTAR_PLACA_TOKEN?.trim();
+  if (bearer) return `Bearer ${bearer}`;
+  return getConsultarPlacaAuthHeader();
 }
 
 export function cachePremiumConsultaFresco(consultadoEmIso: string): boolean {
@@ -43,6 +48,11 @@ export function cachePremiumConsultaFresco(consultadoEmIso: string): boolean {
 }
 
 type JsonRecord = Record<string, unknown>;
+
+function recRenainf(v: unknown): JsonRecord | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  return v as JsonRecord;
+}
 
 export function corpoRespostaMinimoValido(
   raw: unknown
@@ -96,11 +106,18 @@ export function normalizarConsultaPremiumV2(
   switch (tipo) {
     case "leilao": {
       const inf = dados.informacoes_sobre_leilao as JsonRecord;
-      const constatado = constatadoTriStateConsultaPlaca(inf?.possui_registro);
+      const tri = triPossuiRegistroConsultaPlaca(inf?.possui_registro);
+      const constatado = tri === "sim";
       const cls = (inf?.registro_sobre_oferta as JsonRecord | undefined)
         ?.classificacao;
       const extra =
         typeof cls === "string" && cls.trim() ? ` Classificação: ${cls}.` : "";
+      if (tri === "indisponivel") {
+        return {
+          constatado: false,
+          resumo: `Leilão: resultado indisponível na fonte. ${msgBase}`.trim(),
+        };
+      }
       return {
         constatado,
         resumo: constatado
@@ -110,8 +127,15 @@ export function normalizarConsultaPremiumV2(
     }
     case "sinistro": {
       const r = dados.registro_sinistro_com_perda_total as JsonRecord;
-      const constatado = constatadoTriStateConsultaPlaca(r?.possui_registro);
+      const tri = triPossuiRegistroConsultaPlaca(r?.possui_registro);
+      const constatado = tri === "sim";
       const reg = typeof r?.registro === "string" ? r.registro.trim() : "";
+      if (tri === "indisponivel") {
+        return {
+          constatado: false,
+          resumo: `Sinistro (perda total): resultado indisponível na fonte. ${msgBase}`.trim(),
+        };
+      }
       return {
         constatado,
         resumo: constatado
@@ -134,10 +158,17 @@ export function normalizarConsultaPremiumV2(
     }
     case "gravame": {
       const g = dados.gravame as JsonRecord;
-      const constatado = constatadoTriStateConsultaPlaca(g?.possui_gravame);
+      const tri = triPossuiRegistroConsultaPlaca(g?.possui_gravame);
+      const constatado = tri === "sim";
       const reg = g?.registro as JsonRecord | null | undefined;
       const sit =
         reg && typeof reg.situacao === "string" ? reg.situacao.trim() : "";
+      if (tri === "indisponivel") {
+        return {
+          constatado: false,
+          resumo: `Gravame: resultado indisponível na fonte. ${msgBase}`.trim(),
+        };
+      }
       return {
         constatado,
         resumo: constatado
@@ -146,6 +177,22 @@ export function normalizarConsultaPremiumV2(
       };
     }
     case "renainf": {
+      const regDeb = recRenainf(
+        dados.registro_debitos_por_infracoes_renainf ??
+          dados.registroDebitosPorInfracoesRenainf
+      );
+      const infracoesRen = recRenainf(
+        regDeb?.infracoes_renainf ?? regDeb?.infracoesRenainf
+      );
+      const triRen = triPossuiRegistroConsultaPlaca(
+        infracoesRen?.possui_infracoes ?? infracoesRen?.possuiInfracoes
+      );
+      if (triRen === "indisponivel") {
+        return {
+          constatado: false,
+          resumo: `Renainf: resultado indisponível na fonte. ${msgBase}`.trim(),
+        };
+      }
       const r = parsearRenainfDossie(dados);
       const constatado = r.infracoes.length > 0;
       const totalFmt = formatarMoedaBRL(r.valor_total_reais);
@@ -183,22 +230,36 @@ export type ResultadoFetchPremiumV2 =
   | { ok: true; json: JsonRecord }
   | { ok: false; tipoErro: "timeout" | "rede" | "http" | "json" | "config"; mensagem: string };
 
+/** @deprecated Use `resolverPlacaParaRequisicaoConsultarPlacaApi` (mesma regra). */
+export function resolverPlacaParametroConsultaPremiumV2(
+  placaAnaliseNormalizada: string
+): string {
+  return resolverPlacaParaRequisicaoConsultarPlacaApi(placaAnaliseNormalizada);
+}
+
 /**
- * GET com Bearer, timeout `FETCH_TIMEOUT_MS_EXTERNAL` e 1 retry em rede (500ms).
+ * GET com Bearer ou Basic, timeout conforme rota e 1 retry em rede (500ms).
  */
 export async function fetchConsultarPlacaPremiumV2(
   tipo: TipoConsultaRiscoPremium,
   placa: string
 ): Promise<ResultadoFetchPremiumV2> {
+  const placaParaAPI = resolverPlacaParaRequisicaoConsultarPlacaApi(placa);
+  if (placaParaAPI !== placa) {
+    console.info(
+      `[MOCK_ACTIVE] Chamada realizada com placa substituta: ${placaParaAPI} (tipo=${tipo}, placa_analise=${placa})`
+    );
+  }
+
   const timeoutMs =
     tipo === "leilao"
       ? FETCH_TIMEOUT_MS_LEILAO_PRIME
       : tipo === "renainf"
         ? FETCH_TIMEOUT_MS_RENAINF
         : FETCH_TIMEOUT_MS_EXTERNAL;
-  let token: string;
+  let authorization: string;
   try {
-    token = obterTokenBearerConsultarPlacaV2();
+    authorization = obterCabecalhoAuthorizationConsultarPlacaPremium();
   } catch (e) {
     const m = e instanceof Error ? e.message : String(e);
     return { ok: false, tipoErro: "config", mensagem: m };
@@ -206,7 +267,7 @@ export async function fetchConsultarPlacaPremiumV2(
 
   const path = PATHS_PREMIUM_V2[tipo];
   const url = new URL(path, BASE);
-  url.searchParams.set("placa", placa);
+  url.searchParams.set("placa", placaParaAPI);
 
   const tentar = async (): Promise<ResultadoFetchPremiumV2> => {
     const controller = new AbortController();
@@ -215,7 +276,7 @@ export async function fetchConsultarPlacaPremiumV2(
       const res = await fetch(url.toString(), {
         method: "GET",
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: authorization,
           Accept: "application/json",
         },
         signal: controller.signal,
@@ -318,19 +379,23 @@ export function withBlindagemCompletaDedupe<T>(
   return p;
 }
 
+/** Bearer ou o par email+key (Basic) — o mesmo contrato de `obterCabecalhoAuthorizationConsultarPlacaPremium`. */
+function temAutenticacaoConsultarPlacaPremiumNoEnv(): boolean {
+  const token = String(process.env.API_CONSULTAR_PLACA_TOKEN ?? "").trim();
+  if (token.length > 0) return true;
+  const email = String(process.env.CONSULTAR_PLACA_API_EMAIL ?? "").trim();
+  const key = String(process.env.CONSULTAR_PLACA_API_KEY ?? "").trim();
+  return email.length > 0 && key.length > 0;
+}
+
 /**
- * Mock só para consultas premium quando não há token da API no servidor.
- * Se `API_CONSULTAR_PLACA_TOKEN` estiver definido, premium **sempre** chama a
- * Consultar Placa v2 (inclui placa de teste `AAA0000` com resposta real do provedor).
+ * Mock só para consultas premium quando **não** há credencial real no servidor.
+ * Com `API_CONSULTAR_PLACA_TOKEN` **ou** `CONSULTAR_PLACA_API_EMAIL` + `CONSULTAR_PLACA_API_KEY`,
+ * premium chama a v2 (Basic ou Bearer), inclusive com `NEXT_PUBLIC_USE_MOCKS=true`.
  */
 export function isSandboxMocksPremiumEnabled(): boolean {
-  const token = String(process.env.API_CONSULTAR_PLACA_TOKEN ?? "").trim();
-  if (token.length > 0) return false;
-  return (
-    String(process.env.NEXT_PUBLIC_USE_MOCKS ?? "")
-      .trim()
-      .toLowerCase() === "true"
-  );
+  if (temAutenticacaoConsultarPlacaPremiumNoEnv()) return false;
+  return envNextPublicUseMocksAtivo();
 }
 
 export function mockConsultarRiscoApiDeterministico(

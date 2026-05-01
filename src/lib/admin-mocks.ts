@@ -262,6 +262,7 @@ export function mockReconciliacaoDashboard(): DashboardReconciliacao {
     CONSULTA_TIMEOUT: 2,
     CONSULTA_INICIO: 60,
     CACHE_HIT: 120,
+    API_CALL: 55,
   });
 
   const grupos = agruparEventosEmTransacoes(mockLinhasGruposDemo);

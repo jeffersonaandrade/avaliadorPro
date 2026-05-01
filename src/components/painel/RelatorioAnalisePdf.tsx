@@ -2,8 +2,14 @@
 
 import type { ChaveFatorRisco } from "@/components/formulario-viabilidade/historico-veiculo";
 import type { DebitosRenainfPdf, LaudoTecnicoRiscosPdf } from "@/lib/api-v2/parsers";
+import { obterMicrocopyDecisao } from "@/lib/microcopy-decisao";
+import { StrategyCard } from "@/components/decisao/StrategyCard";
+import { RiskAlertCard } from "@/components/risco/RiskAlertCard";
+import { PrecoMaximoSeguro } from "@/components/ui/PrecoMaximoSeguro";
+import { PriceInline } from "@/components/ui/PriceDisplayPdf";
+import { VereditoCard } from "@/components/ui/VereditoCard";
 import type { VereditoViabilidade } from "@/lib/viabilidade";
-import { formatarMoedaBRL } from "@/lib/viabilidade";
+import type { EstadoDecisao } from "@/lib/microcopy-decisao";
 
 export type RelatorioVeiculoMeta = {
   modelo: string;
@@ -74,7 +80,7 @@ function LogoRadarTech() {
           </span>
         </p>
         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-          Relatório de viabilidade
+          Avaliador PRO — Relatório de Viabilidade
         </p>
       </div>
     </div>
@@ -143,15 +149,16 @@ function resolverSeloRelatorioPdf(
   }
   const base = seloVeredito(veredito);
   if (opts.riscoEstruturalLeilaoOuSinistro) {
+    const base =
+      "Veículo com histórico crítico (leilão, sinistro ou restrições). Alto risco de prejuízo e baixa liquidez.";
     const extra = opts.margemFinanceiraAguardandoCustos
-      ? " Margem financeira: aguarde reparos e documentação para calcular lucro."
-      : ` ${subtituloMotor}`;
+      ? " Aguarde reparos e documentação para calcular lucro e margem com precisão."
+      : "";
     return {
-      titulo: "🔴 ARRISCADO — RISCO ESTRUTURAL",
+      titulo: "🔴 NÃO RECOMENDADO PARA COMPRA",
       classe:
         "border-red-600 bg-red-50 text-red-950 ring-2 ring-red-200",
-      subtitulo:
-        "Leilão ou sinistro (perda total) identificado na blindagem." + extra,
+      subtitulo: base + extra,
     };
   }
   if (opts.margemFinanceiraAguardandoCustos) {
@@ -264,19 +271,35 @@ export function RelatorioAnalisePdf({
     contextoFipeMercadoAtivo &&
     perdaHistoricoReais > 0;
 
-  const sugestaoNegociacao =
+  const tetoNegociacaoOk =
     ofertaMaxima !== null &&
     Number.isFinite(ofertaMaxima) &&
-    ofertaMaxima > 0
-      ? `Sugestão de negociação: ancore a proposta abaixo de ${formatarMoedaBRL(
-          ofertaMaxima
-        )} e use esse teto como referência firme na mesa — evite estender a oferta além desse limite sem revisar custos e riscos.`
-      : null;
+    ofertaMaxima > 0;
+  const sugestaoNegociacao = tetoNegociacaoOk
+    ? {
+        min: ofertaMaxima * 0.9,
+        max: ofertaMaxima * 0.97,
+        teto: ofertaMaxima,
+      }
+    : null;
+  const estadoDecisao: EstadoDecisao =
+    !blindagemAtiva || !contextoFipeMercadoAtivo || margemFinanceiraAguardandoCustos
+      ? "incompleto"
+      : veredito === "viavel"
+        ? "verde"
+        : veredito === "atencao"
+          ? "amarelo"
+          : "vermelho";
+  const microcopyDecisao = obterMicrocopyDecisao(
+    estadoDecisao,
+    perdaHistoricoReais,
+    rotulosAtivos
+  );
 
   return (
     <div
       id="area-relatorio"
-      className="relative mx-auto w-full max-w-[210mm] overflow-visible rounded-2xl border border-slate-300 bg-white p-6 text-slate-900 shadow-sm print:shadow-none"
+      className="relative mx-auto w-full max-w-[800px] min-w-0 overflow-visible break-words text-pretty rounded-2xl border border-slate-300 bg-white p-6 leading-relaxed text-slate-900 shadow-sm print:shadow-none md:p-8"
       data-testid="area-relatorio"
     >
       {meta.relatorioDemonstracao ? (
@@ -347,47 +370,80 @@ export function RelatorioAnalisePdf({
         </section>
       </div>
 
-      <div className="relative z-20 mt-6 flex flex-col gap-6">
+      <div className="relative z-20 mt-6 flex min-w-0 flex-col gap-8 break-words text-pretty leading-relaxed">
         <section
           data-pdf-chunk
-          className="relative z-20 overflow-visible rounded-xl border border-slate-200 bg-white p-4"
+          className="relative z-20 min-w-0 overflow-visible rounded-xl border border-slate-200 bg-white p-5 sm:p-6"
         >
-          <h2 className="sr-only">Veredito</h2>
-          <div
-            className={`w-full rounded-2xl border-2 px-5 py-4 text-center ${selo.classe}`}
+          <VereditoCard
+            variant="pdf"
+            titulo={selo.titulo}
+            subtitulo={selo.subtitulo}
+            molduraClassName={selo.classe}
             data-testid="selo-veredito-pdf"
-          >
-            <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-slate-600">
-              Veredito
-            </p>
-            <p className="mt-2 text-xl font-black tracking-tight sm:text-2xl">
-              {selo.titulo}
-            </p>
-            <p className="mt-2 text-xs font-medium leading-snug opacity-90">
-              {selo.subtitulo}
-            </p>
-          </div>
+          />
         </section>
 
         {fipeOk && contextoFipeMercadoAtivo ? (
           <>
             <section
               data-pdf-chunk
-              className="relative z-20 overflow-visible rounded-xl border border-slate-200 bg-white p-4"
+              className="relative z-20 min-w-0 overflow-visible p-0 sm:p-1"
             >
-              <h2 className="text-[11px] font-bold uppercase tracking-widest text-slate-500">
-                Lucro e margem
+              <h2 className="mb-3 text-lg font-black tracking-tight text-slate-900 sm:text-xl">
+                Preço máximo seguro para comprar
               </h2>
-              <ul className="mt-3 space-y-2 text-sm text-slate-800">
-                <li>
-                  <span className="text-slate-500">Lucro estimado:</span>{" "}
-                  <strong className="text-lg tabular-nums text-slate-900">
-                    {exibirLucro ? formatarMoedaBRL(lucroEstimadoReais!) : "—"}
+              <PrecoMaximoSeguro
+                variant="pdf"
+                valor={ofertaMaxima}
+                fipe={baseVenda}
+              />
+            </section>
+            <section
+              data-pdf-chunk
+              className="relative z-20 overflow-visible rounded-xl border border-slate-200 bg-white p-4 sm:p-5"
+            >
+              <h2 className="text-[11px] font-bold uppercase tracking-widest text-slate-600">
+                RECOMENDAÇÃO DIRETA
+              </h2>
+              <p className="mt-2 line-clamp-2 text-sm font-semibold leading-snug text-slate-900">
+                {microcopyDecisao.recomendacao}
+              </p>
+            </section>
+
+            {blindagemAtiva && riscoEstruturalLeilaoOuSinistro ? (
+              <section data-pdf-chunk className="relative z-20 overflow-visible">
+                <h2 className="mb-3 text-lg font-black tracking-tight text-slate-900 sm:text-xl">
+                  Riscos
+                </h2>
+                <RiskAlertCard />
+              </section>
+            ) : null}
+
+            <section
+              data-pdf-chunk
+              className="relative z-20 overflow-visible rounded-xl border border-slate-200 bg-white p-5 sm:p-6"
+            >
+              <h2 className="text-lg font-black tracking-tight text-slate-900 sm:text-xl">
+                Quanto você pode lucrar
+              </h2>
+              <ul className="mt-4 space-y-3 text-sm text-slate-800">
+                <li className="leading-relaxed">
+                  <span className="text-slate-500">Lucro estimado na revenda:</span>{" "}
+                  <strong className="text-lg text-slate-900">
+                    {exibirLucro ? (
+                      <PriceInline
+                        valor={lucroEstimadoReais!}
+                        className="text-lg font-bold"
+                      />
+                    ) : (
+                      "—"
+                    )}
                   </strong>
                 </li>
-                <li>
-                  <span className="text-slate-500">Margem (%):</span>{" "}
-                  <strong className="tabular-nums text-slate-900">
+                <li className="leading-relaxed">
+                  <span className="text-slate-500">Sua margem na revenda (%):</span>{" "}
+                  <strong className="tabular-nums text-lg text-slate-900">
                     {exibirMargem
                       ? `${margemRealProjecaoPct!.toFixed(1).replace(".", ",")}%`
                       : "—"}
@@ -396,59 +452,46 @@ export function RelatorioAnalisePdf({
               </ul>
             </section>
 
-            <section
-              data-pdf-chunk
-              className="relative z-20 overflow-visible rounded-xl border border-slate-900 bg-slate-900 p-4 text-white"
-            >
-              <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Não pague mais que
-              </h2>
-              <p className="mt-2 text-2xl font-black tabular-nums sm:text-3xl">
-                {ofertaMaxima !== null && Number.isFinite(ofertaMaxima)
-                  ? formatarMoedaBRL(ofertaMaxima)
-                  : "—"}
-              </p>
-              <p className="mt-2 text-xs text-slate-400">
-                Limite alinhado à venda realista de{" "}
-                <span className="font-semibold text-slate-200">
-                  {formatarMoedaBRL(baseVenda)}
-                </span>{" "}
-                (menor entre sua venda esperada e a referência ajustada por risco).
-              </p>
-            </section>
-
             {exibirPerdaRisco ? (
               <section
                 data-pdf-chunk
-                className="relative z-20 overflow-visible rounded-xl border border-amber-200 bg-amber-50/90 p-4"
+                className="relative z-20 overflow-visible rounded-xl border border-amber-200 bg-amber-50/90 p-5 sm:p-6"
               >
                 <h2 className="text-[11px] font-bold uppercase tracking-widest text-amber-900">
-                  Impacto de risco (referência de mercado)
+                  Valor que você deixou de perder
                 </h2>
-                <p className="mt-2 text-sm font-semibold text-amber-950">
-                  Você evitou uma perda de{" "}
-                  <span className="font-mono tabular-nums">
-                    {formatarMoedaBRL(perdaHistoricoReais)}
-                  </span>{" "}
-                  neste negócio (referência em relação à FIPE tabela após os indícios
-                  validados).
+                <p className="mt-3 text-sm font-semibold leading-relaxed text-amber-950">
+                  Se você pagasse só pelo valor de tabela, poderia jogar fora cerca
+                  de{" "}
+                  <PriceInline
+                    valor={perdaHistoricoReais}
+                    className="font-mono font-semibold"
+                  />{" "}
+                  neste carro.
                 </p>
-                <p className="mt-2 text-xs leading-relaxed text-amber-900/95">
-                  Impacto em reais na referência de mercado — use para defender sua
-                  margem na negociação.
+                <p className="mt-3 text-sm font-semibold leading-relaxed text-amber-950">
+                  Esta análise mostrou esse risco em reais antes de fechar o
+                  negócio.
                 </p>
               </section>
             ) : null}
 
             {sugestaoNegociacao ? (
-              <section
-                data-pdf-chunk
-                className="relative z-20 overflow-visible rounded-xl border border-cyan-200/80 bg-cyan-50/50 p-4 text-sm leading-relaxed text-cyan-950"
-              >
-                <h2 className="text-[11px] font-bold uppercase tracking-widest text-cyan-800">
-                  Sugestão de negociação
+              <section data-pdf-chunk className="relative z-20 overflow-visible">
+                <h2 className="mb-3 text-lg font-black tracking-tight text-slate-900 sm:text-xl">
+                  Estratégia na mesa de negociação
                 </h2>
-                <p className="mt-2">{sugestaoNegociacao}</p>
+                <StrategyCard
+                  valorMin={sugestaoNegociacao.min}
+                  valorMax={sugestaoNegociacao.max}
+                />
+                <p className="mt-3 text-center text-xs text-slate-600">
+                  Teto de segurança:{" "}
+                  <PriceInline
+                    valor={sugestaoNegociacao.teto}
+                    className="text-sm font-bold"
+                  />
+                </p>
               </section>
             ) : null}
           </>
@@ -471,6 +514,21 @@ export function RelatorioAnalisePdf({
               Histórico validado (resumo)
             </h2>
             <p className="mt-2 leading-relaxed">{textoResumoBlindagem}</p>
+          </section>
+        ) : null}
+        {!blindagemAtiva && contextoFipeMercadoAtivo ? (
+          <section
+            data-pdf-chunk
+            className="relative z-20 overflow-visible rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-950"
+          >
+            <h2 className="text-[11px] font-bold uppercase tracking-widest text-amber-800">
+              Histórico não validado
+            </h2>
+            <p className="mt-2 leading-relaxed">
+              Esta análise ainda não validou histórico premium (leilão, sinistro,
+              roubo/furto, gravame e Renainf). A decisão final deve considerar esse
+              passo para reduzir risco de prejuízo oculto.
+            </p>
           </section>
         ) : null}
 
@@ -560,9 +618,10 @@ export function RelatorioAnalisePdf({
             </p>
             <p className="mt-3 text-sm font-bold text-orange-950">
               Total estimado:{" "}
-              <span className="tabular-nums text-base">
-                {formatarMoedaBRL(debitosRenainf.totalReais)}
-              </span>
+              <PriceInline
+                valor={debitosRenainf.totalReais}
+                className="text-base font-bold text-orange-950"
+              />
             </p>
             <ol className="mt-3 list-inside list-decimal space-y-3 text-xs text-orange-950">
               {debitosRenainf.itens.map((inf, idx) => (

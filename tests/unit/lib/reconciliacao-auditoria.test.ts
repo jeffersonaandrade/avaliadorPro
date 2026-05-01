@@ -38,6 +38,8 @@ describe("calcularKpisConciliacao", () => {
     expect(k.cSucesso).toBe(10);
     expect(k.dDebito).toBe(12);
     expect(k.eFalha).toBe(3);
+    expect(k.cacheHit).toBe(0);
+    expect(k.apiCall).toBe(0);
     expect(k.taxaSucessoPct).toBe(76.9);
     expect(k.alertaDebitoMaiorQueSucesso).toBe(true);
   });
@@ -247,5 +249,26 @@ describe("acumularResumoRoiCreditoPorLinhas", () => {
     expect(r.valor_total_protegido_suspeito).toBe(75.5);
     expect(r.total_consultas_validas).toBe(1);
     expect(r.total_consultas_suspeitas).toBe(2);
+  });
+
+  it("ignora linhas com is_sandbox true (não entra em válido nem suspeito)", () => {
+    const r = acumularResumoRoiCreditoPorLinhas([
+      {
+        valor_evitar_perda: 999,
+        detalhe: "ok",
+        persistencia_falhou_apos_debito: false,
+        is_sandbox: true,
+      },
+      {
+        valor_evitar_perda: 40,
+        detalhe: "ok",
+        persistencia_falhou_apos_debito: false,
+        is_sandbox: false,
+      },
+    ]);
+    expect(r.valor_total_protegido_valido).toBe(40);
+    expect(r.total_consultas_validas).toBe(1);
+    expect(r.valor_total_protegido_suspeito).toBe(0);
+    expect(r.total_consultas_suspeitas).toBe(0);
   });
 });

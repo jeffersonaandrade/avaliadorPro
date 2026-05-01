@@ -1,6 +1,7 @@
 "use server";
 
 import { supabaseAdmin } from "@/lib/supabase";
+import { FILTRO_AUDITORIA_APENAS_ORGANICO } from "@/lib/sandbox-integrity";
 import {
   agregarPorCliente,
   agruparEventosEmTransacoes,
@@ -21,6 +22,7 @@ const EVENTOS_KPI = [
   "CONSULTA_TIMEOUT",
   "CONSULTA_INICIO",
   "CACHE_HIT",
+  "API_CALL",
 ] as const;
 
 const MAX_LINHAS_AGREGACAO = 20_000;
@@ -65,6 +67,8 @@ function mapRow(
       typeof r.blindagem_persistencia_falhou_apos_debito === "boolean"
         ? r.blindagem_persistencia_falhou_apos_debito
         : null,
+    is_sandbox:
+      typeof r.is_sandbox === "boolean" ? r.is_sandbox : null,
   };
 }
 
@@ -76,6 +80,7 @@ async function contarPorEvento(
     .from("consultas_auditoria_eventos")
     .select("id", { count: "exact", head: true })
     .eq("evento", evento)
+    .or(FILTRO_AUDITORIA_APENAS_ORGANICO)
     .gte("criado_em", desdeIso);
   if (error) {
     console.warn("[reconciliacao] contarPorEvento", evento, error.message);
@@ -111,8 +116,9 @@ export async function obterDashboardReconciliacaoAdmin(
   const { data: rowsAgg, error: errAgg } = await supabaseAdmin
     .from("consultas_auditoria_eventos")
     .select(
-      "id, criado_em, cliente_id, placa, evento, tipo_consulta, detalhe, valor_evitar_perda, tipo_risco_detectado, request_id, persistencia_falhou_apos_debito, blindagem_persistencia_falhou_apos_debito"
+      "id, criado_em, cliente_id, placa, evento, tipo_consulta, detalhe, valor_evitar_perda, tipo_risco_detectado, request_id, persistencia_falhou_apos_debito, blindagem_persistencia_falhou_apos_debito, is_sandbox"
     )
+    .or(FILTRO_AUDITORIA_APENAS_ORGANICO)
     .gte("criado_em", desdeKpi)
     .order("criado_em", { ascending: false })
     .limit(MAX_LINHAS_AGREGACAO);
@@ -132,8 +138,9 @@ export async function obterDashboardReconciliacaoAdmin(
   const { data: rowsGrupos, error: errGr } = await supabaseAdmin
     .from("consultas_auditoria_eventos")
     .select(
-      "id, criado_em, cliente_id, placa, evento, tipo_consulta, detalhe, valor_evitar_perda, tipo_risco_detectado, request_id, persistencia_falhou_apos_debito, blindagem_persistencia_falhou_apos_debito"
+      "id, criado_em, cliente_id, placa, evento, tipo_consulta, detalhe, valor_evitar_perda, tipo_risco_detectado, request_id, persistencia_falhou_apos_debito, blindagem_persistencia_falhou_apos_debito, is_sandbox"
     )
+    .or(FILTRO_AUDITORIA_APENAS_ORGANICO)
     .gte("criado_em", desdeGrupos)
     .order("criado_em", { ascending: true })
     .limit(MAX_LINHAS_GRUPOS);
@@ -159,9 +166,10 @@ export async function obterDashboardReconciliacaoAdmin(
   const { data: rowsCred, error: errCr } = await supabaseAdmin
     .from("consultas_auditoria_eventos")
     .select(
-      "id, criado_em, cliente_id, placa, evento, tipo_consulta, detalhe, valor_evitar_perda, tipo_risco_detectado, request_id, persistencia_falhou_apos_debito, blindagem_persistencia_falhou_apos_debito"
+      "id, criado_em, cliente_id, placa, evento, tipo_consulta, detalhe, valor_evitar_perda, tipo_risco_detectado, request_id, persistencia_falhou_apos_debito, blindagem_persistencia_falhou_apos_debito, is_sandbox"
     )
     .eq("evento", "CREDITO_CONSUMIDO")
+    .or(FILTRO_AUDITORIA_APENAS_ORGANICO)
     .gte("criado_em", desdeKpi)
     .order("criado_em", { ascending: false })
     .limit(AMOSTRA_PERSISTENCIA);
@@ -225,8 +233,9 @@ export async function buscarTimelineReconciliacaoAdmin(input: {
   let q = supabaseAdmin
     .from("consultas_auditoria_eventos")
     .select(
-      "id, criado_em, cliente_id, placa, evento, tipo_consulta, detalhe, valor_evitar_perda, tipo_risco_detectado, request_id, persistencia_falhou_apos_debito, blindagem_persistencia_falhou_apos_debito"
+      "id, criado_em, cliente_id, placa, evento, tipo_consulta, detalhe, valor_evitar_perda, tipo_risco_detectado, request_id, persistencia_falhou_apos_debito, blindagem_persistencia_falhou_apos_debito, is_sandbox"
     )
+    .or(FILTRO_AUDITORIA_APENAS_ORGANICO)
     .order("criado_em", { ascending: true })
     .limit(MAX_TIMELINE);
 
@@ -265,8 +274,9 @@ export async function obterSaudaveisComFalhaPersistenciaAdmin(
   const { data, error } = await supabaseAdmin
     .from("consultas_auditoria_eventos")
     .select(
-      "id, criado_em, cliente_id, placa, evento, tipo_consulta, detalhe, valor_evitar_perda, tipo_risco_detectado, request_id, persistencia_falhou_apos_debito, blindagem_persistencia_falhou_apos_debito"
+      "id, criado_em, cliente_id, placa, evento, tipo_consulta, detalhe, valor_evitar_perda, tipo_risco_detectado, request_id, persistencia_falhou_apos_debito, blindagem_persistencia_falhou_apos_debito, is_sandbox"
     )
+    .or(FILTRO_AUDITORIA_APENAS_ORGANICO)
     .gte("criado_em", desde)
     .order("criado_em", { ascending: true })
     .limit(MAX_LINHAS_GRUPOS);

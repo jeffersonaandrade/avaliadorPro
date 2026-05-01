@@ -15,11 +15,10 @@ export function RefinementPanel({ children }: { children: ReactNode }) {
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-left">
         <div>
           <span className="text-sm font-bold text-slate-900">
-            Refinar custos e meta
+            Refinar lucro (opcional)
           </span>
           <p className="mt-0.5 text-xs text-slate-500">
-            Reparos, documentação, transporte, multas, venda esperada e lucro —
-            atualiza a decisão na hora, sem novas consultas.
+            Ajuste custos e meta de venda sem chamar novas consultas.
           </p>
         </div>
         <ChevronDown

@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import { envNextPublicUseMocksAtivo } from "@/lib/demo-mocks";
+
 export type StatusDebitoAuditoria =
   | "debitado_ok"
   | "debito_falhou"
@@ -21,6 +23,8 @@ export type LinhaAuditoriaConsulta = {
   statusDebito: StatusDebitoAuditoria;
   tipo: TipoEventoAuditoria;
   detalhe?: string;
+  /** Modo mock ativo: linha não entra em KPIs “orgânicos” do admin. */
+  origemSandbox?: boolean;
 };
 
 const MAX = 200;
@@ -46,13 +50,15 @@ export function registrarEventoAuditoriaConsulta(
     statusDebito: entrada.statusDebito,
     tipo: entrada.tipo,
     detalhe: entrada.detalhe,
+    ...(envNextPublicUseMocksAtivo() ? { origemSandbox: true as const } : {}),
   };
   buffer.unshift(linha);
   while (buffer.length > MAX) buffer.pop();
 }
 
 export function obterUltimasAuditoriasConsulta(limite: number): LinhaAuditoriaConsulta[] {
-  return buffer.slice(0, Math.max(0, limite));
+  const organicas = buffer.filter((l) => !l.origemSandbox);
+  return organicas.slice(0, Math.max(0, limite));
 }
 
 /** Preço de venda assumido por consulta premium debitada (auditoria / KPI aproximado). */
@@ -64,7 +70,7 @@ export function computarKpisResumoAuditoria(): {
   lucroLiquidoReais: number;
   volumeConsultas: number;
 } {
-  const linhas = buffer;
+  const linhas = buffer.filter((l) => !l.origemSandbox);
   const volumeConsultas = linhas.length;
   let cobrancaPorDebito = 0;
   let custoTotalApiReais = 0;

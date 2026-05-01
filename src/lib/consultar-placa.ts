@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { FETCH_TIMEOUT_MS_EXTERNAL } from "@/lib/fetch-timeout-ms";
+import { resolverPlacaParaRequisicaoConsultarPlacaApi } from "@/lib/placa-teste-demo";
+import { selecionarMelhorFipe } from "@/lib/selecionar-fipe";
 
 const consultarPlacaOkSchema = z.object({
   status: z.literal("ok"),
@@ -11,6 +13,8 @@ const consultarPlacaOkSchema = z.object({
         placa: z.string().optional(),
         chassi: z.string().optional(),
         ano_fabricacao: z.union([z.string(), z.number()]).optional(),
+        /** API pode retornar typo `ano_frabricacao`; manter fallback compatível. */
+        ano_frabricacao: z.union([z.string(), z.number()]).optional(),
         ano_modelo: z.union([z.string(), z.number()]),
         marca: z.string(),
         modelo: z.string(),
@@ -35,6 +39,24 @@ const consultarPlacaErroSchema = z.object({
   mensagem: z.string().optional(),
 });
 
+const consultarPrecoFipeOkSchema = z.object({
+  status: z.literal("ok"),
+  mensagem: z.string().optional(),
+  dados: z.object({
+    informacoes_fipe: z
+      .array(
+        z.object({
+          codigo_fipe: z.string().optional(),
+          modelo_versao: z.string().optional(),
+          preco: z.union([z.string(), z.number()]).optional(),
+          mes_referencia: z.string().optional(),
+          historico: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
+        })
+      )
+      .optional(),
+  }),
+});
+
 export type DadosBasicosVeiculo = {
   placa: string;
   chassi: string;
@@ -47,7 +69,18 @@ export type DadosBasicosVeiculo = {
   raw: z.infer<typeof consultarPlacaOkSchema>;
 };
 
-function getConsultarPlacaAuthHeader(): string {
+export type PrecoFipePorPlaca = {
+  valor: string;
+  mesReferencia: string | null;
+  modeloFipeNome: string;
+  combustivelFipe: string;
+  codigoFipe: string | null;
+  historico12Meses: Record<string, string>;
+  avisoFipe?: string;
+};
+
+/** Basic `email:apiKey` — usado em `/v2/consultarPlaca` e nas rotas premium v2 quando não há Bearer. */
+export function getConsultarPlacaAuthHeader(): string {
   const email = process.env.CONSULTAR_PLACA_API_EMAIL?.trim();
   const apiKey = process.env.CONSULTAR_PLACA_API_KEY?.trim();
   if (!email || !apiKey) {
@@ -61,6 +94,15 @@ function getConsultarPlacaAuthHeader(): string {
 
 const CONSULTAR_PLACA_URL =
   "https://api.consultarplaca.com.br/v2/consultarPlaca";
+const CONSULTAR_PRECO_FIPE_URL =
+  "https://api.consultarplaca.com.br/v2/consultarPrecoFipe";
+
+function formatarReaisParaBRL(valor: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(valor);
+}
 
 /**
  * Informações básicas (Consultar Placa). Consome crédito da conta.
@@ -70,8 +112,15 @@ const CONSULTAR_PLACA_URL =
 export async function consultarInformacoesBasicas(
   placa: string
 ): Promise<DadosBasicosVeiculo> {
+  const placaParaAPI = resolverPlacaParaRequisicaoConsultarPlacaApi(placa);
+  if (placaParaAPI !== placa) {
+    console.info(
+      `[MOCK_ACTIVE] Chamada realizada com placa substituta: ${placaParaAPI}`
+    );
+  }
+
   const url = new URL(CONSULTAR_PLACA_URL);
-  url.searchParams.set("placa", placa);
+  url.searchParams.set("placa", placaParaAPI);
 
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS_EXTERNAL);
@@ -138,7 +187,7 @@ export async function consultarInformacoesBasicas(
   }
 
   return {
-    placa: v.placa ?? placa,
+    placa,
     chassi: v.chassi?.trim() ?? "—",
     cor: v.cor?.trim() ?? "—",
     combustivel: v.combustivel?.trim() ?? "—",
@@ -150,5 +199,99 @@ export async function consultarInformacoesBasicas(
       v.segmento?.trim() ||
       "Automovel",
     raw: okParsed.data,
+  };
+}
+
+/**
+ * Consulta referência FIPE por placa no endpoint v2 da Consultar Placa.
+ * Retorna a primeira versão disponível em `informacoes_fipe`.
+ */
+export async function consultarPrecoFipePorPlaca(
+  placa: string,
+  contexto: { modeloVeiculo: string; anoModelo: number }
+): Promise<PrecoFipePorPlaca | null> {
+  const placaParaAPI = resolverPlacaParaRequisicaoConsultarPlacaApi(placa);
+  const url = new URL(CONSULTAR_PRECO_FIPE_URL);
+  url.searchParams.set("placa", placaParaAPI);
+
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS_EXTERNAL);
+
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: getConsultarPlacaAuthHeader(),
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+  } catch (e) {
+    clearTimeout(t);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[consultar-preco-fipe] fetch", { placa, msg });
+    throw new Error("Falha ao consultar a FIPE na Consultar Placa.");
+  } finally {
+    clearTimeout(t);
+  }
+
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    throw new Error("Resposta inválida ao consultar preço FIPE.");
+  }
+
+  const erroParsed = consultarPlacaErroSchema.safeParse(json);
+  if (erroParsed.success) {
+    throw new Error(
+      erroParsed.data.mensagem ?? "Consultar Placa retornou erro na FIPE."
+    );
+  }
+
+  if (!res.ok) {
+    throw new Error(`Consultar Placa FIPE indisponível (HTTP ${res.status}).`);
+  }
+
+  const okParsed = consultarPrecoFipeOkSchema.safeParse(json);
+  if (!okParsed.success) {
+    console.error(
+      "[consultar-preco-fipe] JSON inesperado",
+      okParsed.error.flatten()
+    );
+    throw new Error("Formato de dados FIPE não reconhecido.");
+  }
+
+  const lista = okParsed.data.dados.informacoes_fipe ?? [];
+  const escolha = selecionarMelhorFipe({
+    modeloVeiculo: contexto.modeloVeiculo,
+    anoModelo: contexto.anoModelo,
+    informacoesFipe: lista,
+  });
+  const item = escolha.item;
+  if (!item) return null;
+
+  const precoNumero =
+    typeof item.preco === "number" ? item.preco : Number(item.preco ?? NaN);
+  if (!Number.isFinite(precoNumero) || precoNumero <= 0) return null;
+
+  const historicoRaw = item.historico ?? {};
+  const historico12Meses: Record<string, string> = {};
+  for (const [mes, valor] of Object.entries(historicoRaw)) {
+    const n = typeof valor === "number" ? valor : Number(valor);
+    if (!Number.isFinite(n) || n <= 0) continue;
+    historico12Meses[mes] = formatarReaisParaBRL(n);
+  }
+
+  return {
+    valor: formatarReaisParaBRL(precoNumero),
+    mesReferencia: item.mes_referencia ?? null,
+    modeloFipeNome: item.modelo_versao?.trim() || "—",
+    combustivelFipe: "—",
+    codigoFipe: item.codigo_fipe?.trim() || null,
+    historico12Meses,
+    ...(escolha.avisoFipe ? { avisoFipe: escolha.avisoFipe } : {}),
   };
 }
