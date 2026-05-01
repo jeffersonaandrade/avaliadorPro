@@ -54,6 +54,23 @@ const consultarPrecoFipeOkSchema = z.object({
         })
       )
       .optional(),
+    informacoes_veiculo: z
+      .object({
+        informacoes_fipe: z
+          .array(
+            z.object({
+              codigo_fipe: z.string().optional(),
+              modelo_versao: z.string().optional(),
+              preco: z.union([z.string(), z.number()]).optional(),
+              mes_referencia: z.string().optional(),
+              historico: z
+                .record(z.string(), z.union([z.string(), z.number()]))
+                .optional(),
+            })
+          )
+          .optional(),
+      })
+      .optional(),
   }),
 });
 
@@ -102,6 +119,18 @@ function formatarReaisParaBRL(valor: number): string {
     style: "currency",
     currency: "BRL",
   }).format(valor);
+}
+
+function parseNumeroPreco(raw: string | number | undefined): number {
+  if (typeof raw === "number") return raw;
+  const txt = String(raw ?? "").trim();
+  if (!txt) return Number.NaN;
+  const limpado = txt.replace(/[^\d,.-]/g, "");
+  if (!limpado) return Number.NaN;
+  const normalizado = limpado.includes(",")
+    ? limpado.replace(/\./g, "").replace(",", ".")
+    : limpado;
+  return Number(normalizado);
 }
 
 /**
@@ -264,7 +293,10 @@ export async function consultarPrecoFipePorPlaca(
     throw new Error("Formato de dados FIPE não reconhecido.");
   }
 
-  const lista = okParsed.data.dados.informacoes_fipe ?? [];
+  const lista =
+    okParsed.data.dados.informacoes_fipe ??
+    okParsed.data.dados.informacoes_veiculo?.informacoes_fipe ??
+    [];
   const escolha = selecionarMelhorFipe({
     modeloVeiculo: contexto.modeloVeiculo,
     anoModelo: contexto.anoModelo,
@@ -273,14 +305,13 @@ export async function consultarPrecoFipePorPlaca(
   const item = escolha.item;
   if (!item) return null;
 
-  const precoNumero =
-    typeof item.preco === "number" ? item.preco : Number(item.preco ?? NaN);
+  const precoNumero = parseNumeroPreco(item.preco);
   if (!Number.isFinite(precoNumero) || precoNumero <= 0) return null;
 
   const historicoRaw = item.historico ?? {};
   const historico12Meses: Record<string, string> = {};
   for (const [mes, valor] of Object.entries(historicoRaw)) {
-    const n = typeof valor === "number" ? valor : Number(valor);
+    const n = parseNumeroPreco(valor);
     if (!Number.isFinite(n) || n <= 0) continue;
     historico12Meses[mes] = formatarReaisParaBRL(n);
   }

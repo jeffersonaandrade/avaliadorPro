@@ -29,8 +29,9 @@ export function BlindagemConversionCard({
   onAbrirModalBlindagem,
 }: BlindagemConversionCardProps) {
   if (!contextoAtivo) return null;
+  const estadoIncompleto = vereditoUi === "indefinido";
   const estadoTensao = vereditoUi === "arriscado" || vereditoUi === "atencao";
-  const mostraPreBlindagem = !blindagemAtiva && estadoTensao;
+  const mostraPreBlindagem = !blindagemAtiva && (estadoTensao || estadoIncompleto);
   const mostraPosBlindagem = blindagemAtiva;
 
   if (!mostraPreBlindagem && !mostraPosBlindagem) return null;
@@ -40,7 +41,9 @@ export function BlindagemConversionCard({
       {mostraPreBlindagem ? (
         <>
           <h3 className="text-base font-extrabold leading-snug text-amber-950 sm:text-lg">
-            {riscoEstimadoReais > 0 ? (
+            {estadoIncompleto ? (
+              "⚠️ Histórico ainda não validado"
+            ) : riscoEstimadoReais > 0 ? (
               <>
                 🚨 Você pode perder até{" "}
                 <PriceInline
@@ -56,11 +59,16 @@ export function BlindagemConversionCard({
             )}
           </h3>
           <p className="mt-2 text-sm font-semibold leading-relaxed text-amber-950">
-            Sem validar o histórico, você pode perder dinheiro mesmo pagando abaixo
-            da FIPE.
+            {estadoIncompleto
+              ? "FIPE sozinha não mostra leilão, sinistro, roubo/furto ou gravame."
+              : "Sem validar o histórico, você pode perder dinheiro mesmo pagando abaixo da FIPE."}
           </p>
 
-          {riscoEstimadoReais > 0 ? (
+          {estadoIncompleto ? (
+            <p className="mt-3 rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-sm font-bold text-amber-950">
+              Valide o histórico antes de confiar na decisão.
+            </p>
+          ) : riscoEstimadoReais > 0 ? (
             <p className="mt-3 rounded-xl border border-amber-200 bg-white/80 px-3 py-2 text-sm font-bold text-amber-950">
               💸 Risco estimado: até{" "}
               <PriceInline valor={riscoEstimadoReais} className="font-black" /> de
