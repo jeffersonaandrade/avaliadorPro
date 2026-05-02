@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { salvarSimulacaoViabilidadeAction } from "@/actions/viabilidade-actions";
 import { ExportReportButton } from "@/components/painel/ExportReportButton";
+import { ExportReportButtonNativo } from "@/components/painel/ExportReportButtonNativo";
 import {
   RelatorioAnalisePdf,
   type RelatorioVeiculoMeta,
@@ -997,7 +998,30 @@ export function FormularioViabilidade({
                 Exporte em PDF para anexar ou apresentar na mesa de negócio.
               </p>
             </div>
-            <ExportReportButton fileBaseName={`relatorio-${placa}`} />
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+              <ExportReportButton fileBaseName={`relatorio-${placa}`} />
+              <ExportReportButtonNativo
+                fileBaseName={`relatorio-${placa}`}
+                dados={{
+                  placa,
+                  fipeTexto: fipeReferenciaTexto,
+                  meta: relatorioVeiculo,
+                  flagsRisco: flagsHistorico,
+                  fipeReferenciaReais: fipeValidaParaAjuste
+                    ? fipeReferenciaReais
+                    : null,
+                  baseVenda,
+                  ofertaMaxima: ofertaMaximaExibicao,
+                  contextoFipeMercadoAtivo,
+                  blindagemAtiva,
+                  riscoEstruturalLeilaoOuSinistro,
+                  margemFinanceiraAguardandoCustos,
+                  veredito: vereditoUi,
+                  subtituloVeredito: metaUi.subtitulo,
+                  perdaHistoricoReais,
+                }}
+              />
+            </div>
           </div>
           <RelatorioAnalisePdf
             placa={placa}
