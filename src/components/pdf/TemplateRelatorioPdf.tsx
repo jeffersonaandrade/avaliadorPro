@@ -12,6 +12,10 @@ import type { VereditoViabilidade } from "@/lib/viabilidade";
 import type { EstadoDecisao } from "@/lib/microcopy-decisao";
 import { formatarMoedaBRLExibicao } from "@/lib/formato-moeda-exibicao";
 import { obterMicrocopyDecisao } from "@/lib/microcopy-decisao";
+import type {
+  DebitosRenainfPdf,
+  LaudoTecnicoRiscosPdf,
+} from "@/lib/api-v2/parsers";
 import {
   obterRotulosRiscoAtivosPdf,
   resolverSeloTemplatePdf,
@@ -35,6 +39,9 @@ export type TemplateRelatorioPdfProps = {
   /** Fase 2: mesma regra que o relatório HTML (já filtrada no formulário). */
   margemRealProjecaoPct?: number | null;
   lucroEstimadoReais?: number | null;
+  /** Dossiê técnico (fase 3) — mesmo payload do relatório HTML. */
+  laudoTecnicoRiscos?: LaudoTecnicoRiscosPdf;
+  debitosRenainf?: DebitosRenainfPdf | null;
 };
 
 const styles = StyleSheet.create({
@@ -250,16 +257,6 @@ const styles = StyleSheet.create({
     color: "#475569",
     lineHeight: 1.5,
   },
-  rodapeFase: {
-    marginTop: 20,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
-    fontSize: 8,
-    color: "#94a3b8",
-    textAlign: "center",
-    lineHeight: 1.4,
-  },
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -430,6 +427,187 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 4,
   },
+  analiseBox: {
+    marginBottom: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 4,
+    backgroundColor: "#ffffff",
+  },
+  analiseTitle: {
+    fontSize: 8,
+    fontWeight: "bold",
+    color: "#475569",
+    textTransform: "uppercase",
+    letterSpacing: 1.5,
+    marginBottom: 6,
+  },
+  analiseBody: {
+    fontSize: 9,
+    color: "#64748b",
+    lineHeight: 1.45,
+  },
+  resumoHistBox: {
+    marginBottom: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 4,
+    backgroundColor: "#f8fafc",
+  },
+  resumoHistTitle: {
+    fontSize: 8,
+    fontWeight: "bold",
+    color: "#64748b",
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
+    marginBottom: 8,
+  },
+  resumoHistBody: {
+    fontSize: 10,
+    color: "#1e293b",
+    lineHeight: 1.5,
+  },
+  histNaoValidadoBox: {
+    marginBottom: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#fcd34d",
+    borderRadius: 4,
+    backgroundColor: "#fffbeb",
+  },
+  histNaoValidadoTitle: {
+    fontSize: 8,
+    fontWeight: "bold",
+    color: "#92400e",
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
+    marginBottom: 8,
+  },
+  histNaoValidadoBody: {
+    fontSize: 10,
+    color: "#78350f",
+    lineHeight: 1.5,
+  },
+  dossieIntro: {
+    marginBottom: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 4,
+    backgroundColor: "#ffffff",
+  },
+  dossieIntroTitle: {
+    fontSize: 8,
+    fontWeight: "bold",
+    color: "#475569",
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
+    marginBottom: 6,
+  },
+  dossieIntroBody: {
+    fontSize: 9,
+    color: "#64748b",
+    lineHeight: 1.45,
+  },
+  evidenceCard: {
+    marginBottom: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 4,
+    backgroundColor: "#f1f5f9",
+  },
+  evidenceCardOrange: {
+    marginBottom: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+    borderRadius: 4,
+    backgroundColor: "#fff7ed",
+  },
+  evidenceTitle: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: "#0f172a",
+    marginBottom: 6,
+  },
+  evidenceTitleOrange: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: "#7c2d12",
+    marginBottom: 6,
+  },
+  evidenceLine: {
+    fontSize: 9,
+    color: "#334155",
+    lineHeight: 1.45,
+    marginBottom: 4,
+  },
+  evidenceLineOrange: {
+    fontSize: 9,
+    color: "#431407",
+    lineHeight: 1.45,
+    marginBottom: 4,
+  },
+  multasHeaderBox: {
+    marginBottom: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#fdba74",
+    borderRadius: 4,
+    backgroundColor: "#fff7ed",
+  },
+  multasHeaderTitle: {
+    fontSize: 8,
+    fontWeight: "bold",
+    color: "#7c2d12",
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
+    marginBottom: 4,
+  },
+  multasHeaderHint: {
+    fontSize: 8,
+    color: "#9a3412",
+    lineHeight: 1.4,
+    marginBottom: 8,
+  },
+  multasTotal: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: "#7c2d12",
+  },
+  multasItemBox: {
+    marginBottom: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: "#ffedd5",
+    borderRadius: 4,
+    backgroundColor: "#ffffff",
+  },
+  multasInfracao: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: "#0f172a",
+    marginBottom: 4,
+  },
+  multasField: {
+    fontSize: 8,
+    color: "#9a3412",
+    lineHeight: 1.4,
+    marginBottom: 2,
+  },
+  footerLegal: {
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+    fontSize: 8,
+    color: "#94a3b8",
+    textAlign: "center",
+    lineHeight: 1.4,
+  },
 });
 
 function formatarDataHoraBr(iso: string): string {
@@ -528,6 +706,8 @@ export function TemplateRelatorioPdf({
   perdaHistoricoReais = 0,
   margemRealProjecaoPct = null,
   lucroEstimadoReais = null,
+  laudoTecnicoRiscos,
+  debitosRenainf = null,
 }: TemplateRelatorioPdfProps) {
   const consultaFmt = formatarDataHoraBr(meta.consultadoEmIso);
   const emitidoFmt = new Date().toLocaleString("pt-BR", {
@@ -603,6 +783,32 @@ export function TemplateRelatorioPdf({
         teto: ofertaMaxima!,
       }
     : null;
+
+  const laudo = laudoTecnicoRiscos ?? {
+    leilaoParagrafos: [],
+    sinistroLinhas: [],
+    rouboLinhas: [],
+    gravameLinhas: [],
+    renainfLinhas: [],
+  };
+  const exibirLaudo =
+    Boolean(blindagemAtiva) &&
+    (laudo.leilaoParagrafos.length > 0 ||
+      laudo.sinistroLinhas.length > 0 ||
+      laudo.rouboLinhas.length > 0 ||
+      laudo.gravameLinhas.length > 0 ||
+      laudo.renainfLinhas.length > 0);
+
+  const textoResumoBlindagem =
+    blindagemAtiva && contextoFipeMercadoAtivo
+      ? rotulosAtivos.length > 0
+        ? `Indícios nas bases consultadas: ${rotulosAtivos.join(", ")}.`
+        : "Nenhum indício estrutural registrado nas consultas para esta placa."
+      : null;
+
+  const exibirMultas =
+    debitosRenainf !== null &&
+    debitosRenainf.itens.length > 0;
 
   return (
     <Document>
@@ -821,11 +1027,154 @@ export function TemplateRelatorioPdf({
           </View>
         )}
 
-        <Text style={styles.rodapeFase}>
-          Avaliador PRO · PDF nativo (fase 2: lucro, risco, valor evitado e
-          estratégia; sem dossiê nem multas) · Texto selecionável · Não substitui
-          vistoria nem documentação legal.
-        </Text>
+        <View break />
+        <View style={styles.analiseBox} wrap={false}>
+          <Text style={styles.analiseTitle}>Análise completa</Text>
+          <Text style={styles.analiseBody}>
+            Provas e detalhes técnicos para sustentar negociação (histórico,
+            dossiê e débitos).
+          </Text>
+        </View>
+
+        {textoResumoBlindagem ? (
+          <View style={styles.resumoHistBox}>
+            <Text style={styles.resumoHistTitle}>Histórico validado (resumo)</Text>
+            <Text style={styles.resumoHistBody}>{textoResumoBlindagem}</Text>
+          </View>
+        ) : null}
+
+        {!blindagemAtiva && contextoFipeMercadoAtivo ? (
+          <View style={styles.histNaoValidadoBox}>
+            <Text style={styles.histNaoValidadoTitle}>Histórico não validado</Text>
+            <Text style={styles.histNaoValidadoBody}>
+              Esta análise ainda não validou histórico premium (leilão, sinistro,
+              roubo/furto, gravame e Renainf). A decisão final deve considerar esse
+              passo para reduzir risco de prejuízo oculto.
+            </Text>
+          </View>
+        ) : null}
+
+        {exibirLaudo ? (
+          <>
+            <View style={styles.dossieIntro}>
+              <Text style={styles.dossieIntroTitle}>Dossiê de evidências validadas</Text>
+              <Text style={styles.dossieIntroBody}>
+                Textos extraídos das consultas oficiais registradas para esta placa.
+                Campos não retornados pela fonte aparecem como &quot;Não
+                informado&quot; na ferramenta; aqui só constam trechos disponíveis.
+              </Text>
+            </View>
+
+            {laudo.leilaoParagrafos.length > 0 ? (
+              <View style={styles.evidenceCard} wrap={false}>
+                <Text style={styles.evidenceTitle}>Leilão</Text>
+                {laudo.leilaoParagrafos.map((p, i) => (
+                  <Text key={i} style={styles.evidenceLine}>
+                    {p}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+
+            {laudo.sinistroLinhas.length > 0 ? (
+              <View style={styles.evidenceCard} wrap={false}>
+                <Text style={styles.evidenceTitle}>Sinistro (perda total)</Text>
+                {laudo.sinistroLinhas.map((l, i) => (
+                  <Text key={i} style={styles.evidenceLine}>
+                    • {l}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+
+            {laudo.rouboLinhas.length > 0 ? (
+              <View style={styles.evidenceCard} wrap={false}>
+                <Text style={styles.evidenceTitle}>Roubo e furto</Text>
+                {laudo.rouboLinhas.map((l, i) => (
+                  <Text key={i} style={styles.evidenceLine}>
+                    {i + 1}. {l}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+
+            {laudo.gravameLinhas.length > 0 ? (
+              <View style={styles.evidenceCard} wrap={false}>
+                <Text style={styles.evidenceTitle}>Gravame</Text>
+                {laudo.gravameLinhas.map((l, i) => (
+                  <Text key={i} style={styles.evidenceLine}>
+                    • {l}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+
+            {laudo.renainfLinhas.length > 0 ? (
+              <View style={styles.evidenceCardOrange} wrap={false}>
+                <Text style={styles.evidenceTitleOrange}>Renainf — infrações</Text>
+                {laudo.renainfLinhas.map((l, i) => (
+                  <Text key={i} style={styles.evidenceLineOrange}>
+                    • {l}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+          </>
+        ) : null}
+
+        {exibirMultas ? (
+          <>
+            <View break />
+            <View style={styles.multasHeaderBox} wrap={false}>
+              <Text style={styles.multasHeaderTitle}>Multas e débitos (valores)</Text>
+              <Text style={styles.multasHeaderHint}>
+                Resumo em reais para apoio à negociação.
+              </Text>
+              <Text style={styles.multasTotal}>
+                Total estimado:{" "}
+                {formatarMoedaBRLExibicao(debitosRenainf!.totalReais)}
+              </Text>
+            </View>
+            {debitosRenainf!.itens.map((inf, idx) => (
+              <View key={idx} style={styles.multasItemBox} wrap={false}>
+                <Text style={styles.multasInfracao}>
+                  {inf.infracao || "Infração"}
+                </Text>
+                <Text style={styles.multasField}>
+                  Órgão autuador: {inf.orgao_autuador || "—"}
+                </Text>
+                <Text style={styles.multasField}>
+                  Valor: {inf.valor_aplicado || "—"}
+                </Text>
+                <Text style={styles.multasField}>
+                  Localização: {inf.local_infracao || "—"}
+                </Text>
+                {inf.numero_auto_infracao ? (
+                  <Text style={styles.multasField}>
+                    Auto: {inf.numero_auto_infracao}
+                  </Text>
+                ) : null}
+                {inf.data_hora_infracao ? (
+                  <Text style={styles.multasField}>
+                    Data da infração: {inf.data_hora_infracao.trim()}
+                  </Text>
+                ) : null}
+                {inf.municipio ? (
+                  <Text style={styles.multasField}>
+                    Município: {inf.municipio}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
+          </>
+        ) : null}
+
+        <View style={styles.footerLegal} wrap={false}>
+          <Text>
+            Avaliador PRO · Documento para apoio à negociação · Texto selecionável
+            · Não substitui vistoria nem documentação legal.
+          </Text>
+        </View>
       </Page>
     </Document>
   );

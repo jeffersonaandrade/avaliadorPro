@@ -1029,6 +1029,8 @@ export function FormularioViabilidade({
                     (!blindagemAtiva || !margemFinanceiraAguardandoCustos)
                       ? resultado.lucroProjetadoMargem
                       : null,
+                  laudoTecnicoRiscos,
+                  debitosRenainf: debitosRenainfPdf,
                 }}
               />
             </div>
