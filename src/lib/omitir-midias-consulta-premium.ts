@@ -1,6 +1,6 @@
 /**
  * Imagens remotas (remarketing / IA) da API Consultar Placa podem estourar timeout
- * em ambientes com limite curto (ex.: Netlify 10s) ou falhar no html2canvas.
+ * em ambientes com limite curto (ex.: Netlify 10s) ou ao renderizar mídia pesada na UI.
  * O texto do dossiê continua disponível.
  */
 export function omitirCarregarImagensConsultaPremium(): boolean {

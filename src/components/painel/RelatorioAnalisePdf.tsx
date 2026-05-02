@@ -304,7 +304,6 @@ export function RelatorioAnalisePdf({
 
   return (
     <div
-      id="area-relatorio"
       className="relative mx-auto w-full max-w-[800px] min-w-0 overflow-visible break-words text-pretty rounded-2xl border border-slate-300 bg-white p-6 leading-relaxed text-slate-900 shadow-sm print:shadow-none md:p-8"
       data-testid="area-relatorio"
     >
@@ -320,14 +319,14 @@ export function RelatorioAnalisePdf({
       ) : null}
       {meta.relatorioDemonstracao ? (
         <div
-          className="pdf-section avoid-break relative z-20 mb-4 rounded-lg border-2 border-dashed border-red-400 bg-red-50/90 px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-red-900"
+          className="relative z-20 mb-4 rounded-lg border-2 border-dashed border-red-400 bg-red-50/90 px-3 py-2 text-center text-xs font-bold uppercase tracking-wide text-red-900"
           role="status"
         >
           RELATÓRIO DE DEMONSTRAÇÃO — DADOS SIMULADOS
         </div>
       ) : null}
 
-      <header className="relatorio-pdf-header pdf-section relative z-20 flex flex-col gap-4 rounded-xl border-b border-slate-200 bg-white pb-5 print:block print:space-y-4 sm:flex-row sm:items-start sm:justify-between">
+      <header className="relative z-20 flex flex-col gap-4 rounded-xl border-b border-slate-200 bg-white pb-5 sm:flex-row sm:items-start sm:justify-between">
         <LogoRadarTech />
         <div className="text-right text-xs text-slate-600">
           <p>
@@ -342,11 +341,11 @@ export function RelatorioAnalisePdf({
         </div>
       </header>
 
-      <section className="pdf-section relative z-20 mt-5 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+      <section className="relative z-20 mt-5 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
         <h2 className="text-[11px] font-bold uppercase tracking-widest text-slate-500">
           Veículo
         </h2>
-        <div className="relatorio-pdf-veiculo-grid mt-3 grid gap-3 print:block print:space-y-3 sm:grid-cols-2">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
             <p className="text-xs text-slate-500">Placa</p>
             <p className="text-lg font-bold tracking-wide">{placa}</p>
@@ -371,9 +370,9 @@ export function RelatorioAnalisePdf({
         </div>
       </section>
 
-      <div className="relatorio-pdf-main-stack relative z-20 mt-6 flex min-w-0 flex-col gap-8 break-words text-pretty leading-relaxed print:block print:space-y-8">
+      <div className="relative z-20 mt-6 flex min-w-0 flex-col gap-8 break-words text-pretty leading-relaxed">
         <section
-          className="pdf-section relative z-20 min-w-0 overflow-visible rounded-xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5"
+          className="relative z-20 min-w-0 overflow-visible rounded-xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5"
         >
           <h2 className="text-[11px] font-bold uppercase tracking-widest text-slate-600">
             RESUMO EXECUTIVO
@@ -420,7 +419,7 @@ export function RelatorioAnalisePdf({
         </section>
 
         <section
-          className="pdf-section avoid-break relative z-20 min-w-0 overflow-visible rounded-xl border border-slate-200 bg-white p-5 sm:p-6"
+          className="relative z-20 min-w-0 overflow-visible rounded-xl border border-slate-200 bg-white p-5 sm:p-6"
         >
           <VereditoCard
             variant="pdf"
@@ -434,7 +433,7 @@ export function RelatorioAnalisePdf({
         {fipeOk && contextoFipeMercadoAtivo ? (
           <>
             <section
-              className="pdf-section relative z-20 min-w-0 overflow-visible p-0 sm:p-1"
+              className="relative z-20 min-w-0 overflow-visible p-0 sm:p-1"
             >
               <h2 className="mb-3 text-lg font-black tracking-tight text-slate-900 sm:text-xl">
                 Preço máximo seguro para comprar
@@ -446,7 +445,7 @@ export function RelatorioAnalisePdf({
               />
             </section>
             <section
-              className="pdf-section avoid-break relative z-20 overflow-visible rounded-xl border border-slate-200 bg-white p-4 sm:p-5"
+              className="relative z-20 overflow-visible rounded-xl border border-slate-200 bg-white p-4 sm:p-5"
             >
               <h2 className="text-[11px] font-bold uppercase tracking-widest text-slate-600">
                 RECOMENDAÇÃO DIRETA
@@ -457,7 +456,7 @@ export function RelatorioAnalisePdf({
             </section>
 
             {blindagemAtiva && riscoEstruturalLeilaoOuSinistro ? (
-              <section className="pdf-section avoid-break relative z-20 overflow-visible">
+              <section className="relative z-20 overflow-visible">
                 <h2 className="mb-3 text-lg font-black tracking-tight text-slate-900 sm:text-xl">
                   Riscos
                 </h2>
@@ -466,7 +465,7 @@ export function RelatorioAnalisePdf({
             ) : null}
 
             <section
-              className="pdf-section relative z-20 overflow-visible rounded-xl border border-slate-200 bg-white p-5 sm:p-6"
+              className="relative z-20 overflow-visible rounded-xl border border-slate-200 bg-white p-5 sm:p-6"
             >
               <h2 className="text-lg font-black tracking-tight text-slate-900 sm:text-xl">
                 Quanto você pode lucrar
@@ -498,7 +497,7 @@ export function RelatorioAnalisePdf({
 
             {exibirPerdaRisco ? (
               <section
-                className="pdf-section relative z-20 overflow-visible rounded-xl border border-amber-200 bg-amber-50/90 p-5 sm:p-6"
+                className="relative z-20 overflow-visible rounded-xl border border-amber-200 bg-amber-50/90 p-5 sm:p-6"
               >
                 <h2 className="text-[11px] font-bold uppercase tracking-widest text-amber-900">
                   Valor que você deixou de perder
@@ -520,7 +519,7 @@ export function RelatorioAnalisePdf({
             ) : null}
 
             {sugestaoNegociacao ? (
-              <section className="pdf-section avoid-break relative z-20 overflow-visible">
+              <section className="relative z-20 overflow-visible">
                 <h2 className="mb-3 text-lg font-black tracking-tight text-slate-900 sm:text-xl">
                   Estratégia na mesa de negociação
                 </h2>
@@ -540,7 +539,7 @@ export function RelatorioAnalisePdf({
           </>
         ) : (
           <section
-            className="pdf-section avoid-break relative z-20 overflow-visible rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600"
+            className="relative z-20 overflow-visible rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600"
           >
             Inclua a referência de mercado na decisão na ferramenta para gerar lucro,
             limite sugerido e impacto de risco neste relatório.
@@ -548,7 +547,7 @@ export function RelatorioAnalisePdf({
         )}
 
         <section
-          className="pdf-section pdf-page-break-before relative z-20 overflow-visible rounded-xl border border-slate-200 bg-white p-4"
+          className="relative z-20 overflow-visible rounded-xl border border-slate-200 bg-white p-4"
         >
           <h2 className="text-[11px] font-bold uppercase tracking-widest text-slate-600">
             ANÁLISE COMPLETA
@@ -561,7 +560,7 @@ export function RelatorioAnalisePdf({
 
         {textoResumoBlindagem ? (
           <section
-            className="pdf-section relative z-20 overflow-visible rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-800"
+            className="relative z-20 overflow-visible rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-800"
           >
             <h2 className="text-[11px] font-bold uppercase tracking-widest text-slate-500">
               Histórico validado (resumo)
@@ -571,7 +570,7 @@ export function RelatorioAnalisePdf({
         ) : null}
         {!blindagemAtiva && contextoFipeMercadoAtivo ? (
           <section
-            className="pdf-section relative z-20 overflow-visible rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-950"
+            className="relative z-20 overflow-visible rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-950"
           >
             <h2 className="text-[11px] font-bold uppercase tracking-widest text-amber-800">
               Histórico não validado
@@ -598,7 +597,7 @@ export function RelatorioAnalisePdf({
             </section>
 
             {laudo.leilaoParagrafos.length > 0 ? (
-              <div className="pdf-force-page-break pdf-section avoid-break relative z-20 overflow-visible rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-800">
+              <div className="relative z-20 overflow-visible rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-800">
                 <p className="font-bold text-slate-900">Leilão</p>
                 <div className="mt-2 space-y-2 leading-relaxed">
                   {laudo.leilaoParagrafos.map((p, i) => (
@@ -609,7 +608,7 @@ export function RelatorioAnalisePdf({
             ) : null}
 
             {laudo.sinistroLinhas.length > 0 ? (
-              <div className="pdf-force-page-break pdf-section avoid-break relative z-20 overflow-visible rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-800">
+              <div className="relative z-20 overflow-visible rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-800">
                 <p className="font-bold text-slate-900">Sinistro (perda total)</p>
                 <ul className="mt-2 list-inside list-disc space-y-1 leading-relaxed">
                   {laudo.sinistroLinhas.map((l, i) => (
@@ -620,7 +619,7 @@ export function RelatorioAnalisePdf({
             ) : null}
 
             {laudo.rouboLinhas.length > 0 ? (
-              <div className="pdf-force-page-break pdf-section avoid-break relative z-20 overflow-visible rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-800">
+              <div className="relative z-20 overflow-visible rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-800">
                 <p className="font-bold text-slate-900">Roubo e furto</p>
                 <ul className="mt-2 list-inside list-decimal space-y-2 leading-relaxed">
                   {laudo.rouboLinhas.map((l, i) => (
@@ -631,7 +630,7 @@ export function RelatorioAnalisePdf({
             ) : null}
 
             {laudo.gravameLinhas.length > 0 ? (
-              <div className="pdf-force-page-break pdf-section avoid-break relative z-20 overflow-visible rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-800">
+              <div className="relative z-20 overflow-visible rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-800">
                 <p className="font-bold text-slate-900">Gravame</p>
                 <ul className="mt-2 space-y-1 leading-relaxed">
                   {laudo.gravameLinhas.map((l, i) => (
@@ -642,7 +641,7 @@ export function RelatorioAnalisePdf({
             ) : null}
 
             {laudo.renainfLinhas.length > 0 ? (
-              <div className="pdf-force-page-break pdf-section avoid-break relative z-20 overflow-visible rounded-lg border border-orange-100 bg-orange-50/80 p-3 text-xs text-orange-950">
+              <div className="relative z-20 overflow-visible rounded-lg border border-orange-100 bg-orange-50/80 p-3 text-xs text-orange-950">
                 <p className="font-bold">Renainf — infrações</p>
                 <ul className="mt-2 space-y-2 leading-relaxed">
                   {laudo.renainfLinhas.map((l, i) => (
@@ -655,8 +654,8 @@ export function RelatorioAnalisePdf({
         ) : null}
 
         {debitosRenainf && debitosRenainf.itens.length > 0 ? (
-          <div className="pdf-force-page-break relatorio-pdf-multas-wrap flex flex-col gap-4 print:block print:space-y-4">
-            <section className="pdf-section relative z-20 overflow-visible rounded-xl border border-orange-200/90 bg-orange-50/40 p-4">
+          <div className="flex flex-col gap-4">
+            <section className="relative z-20 overflow-visible rounded-xl border border-orange-200/90 bg-orange-50/40 p-4">
               <h2 className="text-[11px] font-bold uppercase tracking-widest text-orange-900">
                 Multas e débitos (valores)
               </h2>
@@ -674,7 +673,7 @@ export function RelatorioAnalisePdf({
             {debitosRenainf.itens.map((inf, idx) => (
               <div
                 key={idx}
-                className="pdf-section avoid-break relative z-20 overflow-visible rounded-lg border border-orange-100 bg-white/90 px-3 py-2 text-xs leading-relaxed text-orange-950"
+                className="relative z-20 overflow-visible rounded-lg border border-orange-100 bg-white/90 px-3 py-2 text-xs leading-relaxed text-orange-950"
               >
                 <span className="font-semibold text-slate-900">
                   {inf.infracao || "Infração"}
@@ -717,7 +716,7 @@ export function RelatorioAnalisePdf({
         ) : null}
 
         <footer
-          className="pdf-section avoid-break relative z-20 overflow-visible border-t border-slate-200 pt-4 pb-6 text-center text-[10px] leading-relaxed text-slate-500"
+          className="relative z-20 overflow-visible border-t border-slate-200 pt-4 pb-6 text-center text-[10px] leading-relaxed text-slate-500"
         >
           Avaliador PRO · Documento para apoio à negociação · Não substitui vistoria nem
           documentação legal.

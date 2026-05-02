@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import { salvarSimulacaoViabilidadeAction } from "@/actions/viabilidade-actions";
 import { ExportReportButton } from "@/components/painel/ExportReportButton";
-import { ExportReportButtonNativo } from "@/components/painel/ExportReportButtonNativo";
 import {
   RelatorioAnalisePdf,
   type RelatorioVeiculoMeta,
@@ -989,7 +988,7 @@ export function FormularioViabilidade({
 
       {relatorioVeiculo ? (
         <div className="space-y-3 rounded-2xl border border-cyan-200/70 bg-white p-4 shadow-sm ring-1 ring-cyan-100/80">
-          <div className="pdf-exclude flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-bold text-slate-900">
                 Relatório para negociação
@@ -998,42 +997,39 @@ export function FormularioViabilidade({
                 Exporte em PDF para anexar ou apresentar na mesa de negócio.
               </p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-              <ExportReportButton fileBaseName={`relatorio-${placa}`} />
-              <ExportReportButtonNativo
-                fileBaseName={`relatorio-${placa}`}
-                dados={{
-                  placa,
-                  fipeTexto: fipeReferenciaTexto,
-                  meta: relatorioVeiculo,
-                  flagsRisco: flagsHistorico,
-                  fipeReferenciaReais: fipeValidaParaAjuste
-                    ? fipeReferenciaReais
+            <ExportReportButton
+              fileBaseName={`relatorio-${placa}`}
+              dados={{
+                placa,
+                fipeTexto: fipeReferenciaTexto,
+                meta: relatorioVeiculo,
+                flagsRisco: flagsHistorico,
+                fipeReferenciaReais: fipeValidaParaAjuste
+                  ? fipeReferenciaReais
+                  : null,
+                baseVenda,
+                ofertaMaxima: ofertaMaximaExibicao,
+                contextoFipeMercadoAtivo,
+                blindagemAtiva,
+                riscoEstruturalLeilaoOuSinistro,
+                margemFinanceiraAguardandoCustos,
+                veredito: vereditoUi,
+                subtituloVeredito: metaUi.subtitulo,
+                perdaHistoricoReais,
+                margemRealProjecaoPct:
+                  semaforoCompleto &&
+                  (!blindagemAtiva || !margemFinanceiraAguardandoCustos)
+                    ? resultado.margemRealProjecaoPct
                     : null,
-                  baseVenda,
-                  ofertaMaxima: ofertaMaximaExibicao,
-                  contextoFipeMercadoAtivo,
-                  blindagemAtiva,
-                  riscoEstruturalLeilaoOuSinistro,
-                  margemFinanceiraAguardandoCustos,
-                  veredito: vereditoUi,
-                  subtituloVeredito: metaUi.subtitulo,
-                  perdaHistoricoReais,
-                  margemRealProjecaoPct:
-                    semaforoCompleto &&
-                    (!blindagemAtiva || !margemFinanceiraAguardandoCustos)
-                      ? resultado.margemRealProjecaoPct
-                      : null,
-                  lucroEstimadoReais:
-                    semaforoCompleto &&
-                    (!blindagemAtiva || !margemFinanceiraAguardandoCustos)
-                      ? resultado.lucroProjetadoMargem
-                      : null,
-                  laudoTecnicoRiscos,
-                  debitosRenainf: debitosRenainfPdf,
-                }}
-              />
-            </div>
+                lucroEstimadoReais:
+                  semaforoCompleto &&
+                  (!blindagemAtiva || !margemFinanceiraAguardandoCustos)
+                    ? resultado.lucroProjetadoMargem
+                    : null,
+                laudoTecnicoRiscos,
+                debitosRenainf: debitosRenainfPdf,
+              }}
+            />
           </div>
           <RelatorioAnalisePdf
             placa={placa}

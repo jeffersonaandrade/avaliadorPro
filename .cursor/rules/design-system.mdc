@@ -14,7 +14,7 @@ alwaysApply: true
 5. **Tokens** centralizados em **`src/design-system/tokens.ts`** (`DS`); compor com **`cn()`** (`src/lib/cn.ts`). Evitar duplicar strings de utilitários que já existem em `DS`.
 6. **Mobile-first** obrigatório; valores grandes em destaque usam **`clamp`** via `DS.typography.heroPrice` / `PriceHero`.
 7. **Evitar** `overflow-hidden` sem necessidade; `BaseCard` usa overflow controlado por padrão.
-8. **PDF** (`RelatorioAnalisePdf`, export html2canvas): reutilizar **`PrecoMaximoSeguro`**, **`VereditoCard`**, **`PriceInline`** — mesma lógica visual que a UI. Container do relatório: **`max-w-[800px] mx-auto`**.
+8. **PDF** (export): **`TemplateRelatorioPdf`** (`@react-pdf/renderer`) para o arquivo; na tela, **`RelatorioAnalisePdf`** com **`PrecoMaximoSeguro`**, **`VereditoCard`**, **`PriceInline`**. Container do relatório web: **`max-w-[800px] mx-auto`**.
 
 ## Objetivo
 

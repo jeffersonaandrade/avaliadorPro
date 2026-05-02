@@ -60,7 +60,7 @@ SaaS B2B para **consulta por placa** (dados do veículo + referência FIPE), **s
 - Campos monetários em **centavos** na UI (máscara tipo caixa).
 - **Auto-save** com debounce (`DEBOUNCE_MS` = 700 ms) via `salvarSimulacaoViabilidadeAction`, desde que plano ativo.
 - Toggle **“incluir referência FIPE na decisão”** (`fipeCarregada`): quando ligado e FIPE válida na consulta, calcula teto, oferta inicial e veredito; quando desligado, persiste só simulação base (sem contexto FIPE no JSON salvo).
-- **Exportar relatório PDF** (`ExportReportButton`, `RelatorioAnalisePdf`, `export-pdf.ts`): captura o bloco `#area-relatorio` com `html2canvas` + `jspdf` (A4, multipágina). Placa demo ou `sandboxAtivo` → aviso “dados simulados”. O botão usa `pdf-exclude` e fica fora do nó capturado.
+- **Exportar relatório PDF** (`ExportReportButton`, `export-pdf.ts`, `TemplateRelatorioPdf`): geração vetorial com `@react-pdf/renderer` (texto selecionável). O painel continua exibindo `RelatorioAnalisePdf` na tela; o download usa os mesmos dados via props. Placa demo ou `sandboxAtivo` → aviso “dados simulados” no relatório.
 
 ### 3.4 Consultas premium (risco) — blindagem completa
 

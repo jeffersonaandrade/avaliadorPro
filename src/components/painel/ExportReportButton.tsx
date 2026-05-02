@@ -3,7 +3,8 @@
 import { FileDown, Loader2 } from "lucide-react";
 import { useCallback, useState } from "react";
 
-import { exportHtmlNodeToPdf } from "@/lib/export-pdf";
+import type { TemplateRelatorioPdfProps } from "@/components/pdf/TemplateRelatorioPdf";
+import { exportarRelatorioPdf } from "@/lib/export-pdf";
 
 function sanitizarNomeArquivo(base: string): string {
   const s = base.replace(/[^a-zA-Z0-9-_]/g, "").slice(0, 80);
@@ -11,29 +12,27 @@ function sanitizarNomeArquivo(base: string): string {
 }
 
 export type ExportReportButtonProps = {
-  /** Sem extensão; será normalizado para arquivo seguro. */
   fileBaseName: string;
+  dados: TemplateRelatorioPdfProps;
 };
 
-export function ExportReportButton({ fileBaseName }: ExportReportButtonProps) {
+export function ExportReportButton({ fileBaseName, dados }: ExportReportButtonProps) {
   const [busy, setBusy] = useState(false);
 
   const handleClick = useCallback(async () => {
-    const el = document.getElementById("area-relatorio");
-    if (!el) return;
     setBusy(true);
     try {
       const nome = sanitizarNomeArquivo(fileBaseName);
-      await exportHtmlNodeToPdf(el, `${nome}.pdf`);
+      await exportarRelatorioPdf(dados, `${nome}.pdf`);
     } finally {
       setBusy(false);
     }
-  }, [fileBaseName]);
+  }, [dados, fileBaseName]);
 
   return (
     <button
       type="button"
-      className="pdf-exclude inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-600 bg-white px-4 py-2.5 text-sm font-bold text-cyan-800 shadow-sm transition hover:bg-cyan-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-600 disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-cyan-600 bg-white px-4 py-2.5 text-sm font-bold text-cyan-800 shadow-sm transition hover:bg-cyan-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-600 disabled:cursor-not-allowed disabled:opacity-60"
       data-testid="btn-exportar-relatorio-pdf"
       disabled={busy}
       onClick={() => {
