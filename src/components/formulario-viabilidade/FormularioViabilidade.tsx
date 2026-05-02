@@ -1019,6 +1019,16 @@ export function FormularioViabilidade({
                   veredito: vereditoUi,
                   subtituloVeredito: metaUi.subtitulo,
                   perdaHistoricoReais,
+                  margemRealProjecaoPct:
+                    semaforoCompleto &&
+                    (!blindagemAtiva || !margemFinanceiraAguardandoCustos)
+                      ? resultado.margemRealProjecaoPct
+                      : null,
+                  lucroEstimadoReais:
+                    semaforoCompleto &&
+                    (!blindagemAtiva || !margemFinanceiraAguardandoCustos)
+                      ? resultado.lucroProjetadoMargem
+                      : null,
                 }}
               />
             </div>

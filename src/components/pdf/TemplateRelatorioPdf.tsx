@@ -32,6 +32,9 @@ export type TemplateRelatorioPdfProps = {
   veredito: VereditoViabilidade;
   subtituloVeredito: string;
   perdaHistoricoReais?: number;
+  /** Fase 2: mesma regra que o relatório HTML (já filtrada no formulário). */
+  margemRealProjecaoPct?: number | null;
+  lucroEstimadoReais?: number | null;
 };
 
 const styles = StyleSheet.create({
@@ -288,6 +291,145 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     textTransform: "uppercase",
   },
+  riskBox: {
+    backgroundColor: "#dc2626",
+    borderRadius: 6,
+    padding: 14,
+    marginBottom: 14,
+  },
+  riskTitle: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: "#ffffff",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  riskBody: {
+    fontSize: 9,
+    color: "#fef2f2",
+    textAlign: "center",
+    lineHeight: 1.5,
+    marginBottom: 8,
+  },
+  riskListItem: {
+    fontSize: 9,
+    color: "#ffffff",
+    marginBottom: 4,
+    paddingLeft: 8,
+  },
+  riskFooter: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.25)",
+    fontSize: 9,
+    fontWeight: "bold",
+    color: "#ffffff",
+    textAlign: "center",
+    lineHeight: 1.45,
+  },
+  lucroSection: {
+    marginBottom: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 4,
+    backgroundColor: "#ffffff",
+  },
+  lucroTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#0f172a",
+    marginBottom: 10,
+  },
+  lucroLine: {
+    fontSize: 10,
+    color: "#1e293b",
+    marginBottom: 8,
+    lineHeight: 1.45,
+  },
+  lucroStrong: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: "#0f172a",
+  },
+  perdaBox: {
+    marginBottom: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#fcd34d",
+    borderRadius: 4,
+    backgroundColor: "#fffbeb",
+  },
+  perdaTitle: {
+    fontSize: 8,
+    fontWeight: "bold",
+    color: "#78350f",
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
+    marginBottom: 8,
+  },
+  perdaBody: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: "#78350f",
+    lineHeight: 1.5,
+    marginBottom: 8,
+  },
+  strategyBox: {
+    marginBottom: 14,
+    padding: 14,
+    borderWidth: 2,
+    borderColor: "#e2e8f0",
+    borderRadius: 6,
+    backgroundColor: "#f1f5f9",
+  },
+  strategyTitle: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: "#0f172a",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  strategyHint: {
+    fontSize: 9,
+    color: "#475569",
+    textAlign: "center",
+    lineHeight: 1.45,
+    marginBottom: 10,
+  },
+  strategyFaixa: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    marginBottom: 8,
+  },
+  strategyValor: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#0f172a",
+  },
+  strategyAte: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: "#64748b",
+    marginHorizontal: 8,
+  },
+  strategyFoot: {
+    fontSize: 8,
+    fontWeight: "bold",
+    color: "#475569",
+    textAlign: "center",
+    lineHeight: 1.45,
+    marginTop: 6,
+  },
+  strategyTeto: {
+    fontSize: 8,
+    color: "#475569",
+    textAlign: "center",
+    marginTop: 4,
+  },
 });
 
 function formatarDataHoraBr(iso: string): string {
@@ -384,6 +526,8 @@ export function TemplateRelatorioPdf({
   veredito,
   subtituloVeredito,
   perdaHistoricoReais = 0,
+  margemRealProjecaoPct = null,
+  lucroEstimadoReais = null,
 }: TemplateRelatorioPdfProps) {
   const consultaFmt = formatarDataHoraBr(meta.consultadoEmIso);
   const emitidoFmt = new Date().toLocaleString("pt-BR", {
@@ -444,6 +588,22 @@ export function TemplateRelatorioPdf({
     ? formatarMoedaBRLExibicao(perdaHistoricoReais)
     : "—";
 
+  const exibirLucro =
+    lucroEstimadoReais !== null && Number.isFinite(lucroEstimadoReais);
+  const exibirMargem =
+    margemRealProjecaoPct !== null && Number.isFinite(margemRealProjecaoPct);
+  const tetoNegociacaoOk =
+    ofertaMaxima !== null &&
+    Number.isFinite(ofertaMaxima) &&
+    ofertaMaxima > 0;
+  const sugestaoNegociacao = tetoNegociacaoOk
+    ? {
+        min: ofertaMaxima! * 0.9,
+        max: ofertaMaxima! * 0.97,
+        teto: ofertaMaxima!,
+      }
+    : null;
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
@@ -459,7 +619,7 @@ export function TemplateRelatorioPdf({
           <View>
             <Text style={styles.brandTitle}>Avaliador PRO</Text>
             <Text style={styles.brandSub}>
-              Relatório de viabilidade (fase 1 — PDF nativo)
+              Relatório de viabilidade (PDF nativo)
             </Text>
           </View>
           <View style={styles.metaRight}>
@@ -576,6 +736,81 @@ export function TemplateRelatorioPdf({
               <Text style={styles.recoTitle}>Recomendação direta</Text>
               <Text style={styles.recoBody}>{microcopyDecisao.recomendacao}</Text>
             </View>
+
+            {blindagemAtiva && riscoEstruturalLeilaoOuSinistro ? (
+              <View style={styles.riskBox} wrap={false}>
+                <Text style={styles.riskTitle}>Risco detectado nesse veículo</Text>
+                <Text style={styles.riskBody}>
+                  Esse veículo possui histórico que reduz o valor de mercado e
+                  dificulta a revenda.
+                </Text>
+                <Text style={styles.riskListItem}>• Leilão</Text>
+                <Text style={styles.riskListItem}>• Sinistro</Text>
+                <Text style={styles.riskListItem}>• Roubo</Text>
+                <Text style={styles.riskListItem}>• Gravame</Text>
+                <Text style={styles.riskFooter}>
+                  Esse tipo de veículo costuma vender mais barato e demorar mais.
+                </Text>
+              </View>
+            ) : null}
+
+            <View style={styles.lucroSection}>
+              <Text style={styles.lucroTitle}>Quanto você pode lucrar</Text>
+              <Text style={styles.lucroLine}>
+                <Text style={{ color: "#64748b" }}>Lucro estimado na revenda: </Text>
+                <Text style={styles.lucroStrong}>
+                  {exibirLucro
+                    ? formatarMoedaBRLExibicao(lucroEstimadoReais!)
+                    : "—"}
+                </Text>
+              </Text>
+              <Text style={styles.lucroLine}>
+                <Text style={{ color: "#64748b" }}>Sua margem na revenda (%): </Text>
+                <Text style={styles.lucroStrong}>
+                  {exibirMargem
+                    ? `${margemRealProjecaoPct!.toFixed(1).replace(".", ",")}%`
+                    : "—"}
+                </Text>
+              </Text>
+            </View>
+
+            {exibirPerdaRisco ? (
+              <View style={styles.perdaBox} wrap={false}>
+                <Text style={styles.perdaTitle}>Valor que você deixou de perder</Text>
+                <Text style={styles.perdaBody}>
+                  Se você pagasse só pelo valor de tabela, poderia jogar fora cerca
+                  de {formatarMoedaBRLExibicao(perdaHistoricoReais)} neste carro.
+                </Text>
+                <Text style={styles.perdaBody}>
+                  Esta análise mostrou esse risco em reais antes de fechar o negócio.
+                </Text>
+              </View>
+            ) : null}
+
+            {sugestaoNegociacao ? (
+              <View style={styles.strategyBox} wrap={false}>
+                <Text style={styles.strategyTitle}>Estratégia na mesa de negociação</Text>
+                <Text style={styles.strategyHint}>
+                  Para manter uma margem segura, negocie este veículo entre:
+                </Text>
+                <View style={styles.strategyFaixa}>
+                  <Text style={styles.strategyValor}>
+                    {formatarMoedaBRLExibicao(sugestaoNegociacao.min)}
+                  </Text>
+                  <Text style={styles.strategyAte}>até</Text>
+                  <Text style={styles.strategyValor}>
+                    {formatarMoedaBRLExibicao(sugestaoNegociacao.max)}
+                  </Text>
+                </View>
+                <Text style={styles.strategyFoot}>
+                  Nunca ultrapasse o preço máximo seguro.
+                </Text>
+                <Text style={styles.strategyTeto}>
+                  Teto de segurança:{" "}
+                  {formatarMoedaBRLExibicao(sugestaoNegociacao.teto)}
+                </Text>
+              </View>
+            ) : null}
           </>
         ) : (
           <View style={styles.avisoMercado} wrap={false}>
@@ -587,8 +822,9 @@ export function TemplateRelatorioPdf({
         )}
 
         <Text style={styles.rodapeFase}>
-          Avaliador PRO · PDF nativo (fase 1: sem dossiê nem multas) · Texto
-          selecionável · Não substitui vistoria nem documentação legal.
+          Avaliador PRO · PDF nativo (fase 2: lucro, risco, valor evitado e
+          estratégia; sem dossiê nem multas) · Texto selecionável · Não substitui
+          vistoria nem documentação legal.
         </Text>
       </Page>
     </Document>
